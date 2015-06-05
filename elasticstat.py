@@ -2,11 +2,10 @@
 
 import argparse
 import datetime
+import getpass
 import signal
 import sys
 import time
-
-from multiprocessing.queues import SimpleQueue
 
 from elasticsearch import Elasticsearch
 
@@ -48,13 +47,18 @@ NODE_HEADINGS["store_throttle"] = "idx st"
 NODE_HEADINGS["docs"] = "docs"
 THREAD_POOLS = ["index", "search", "bulk", "get", "merge"]
 
+class ESArgParser(argparse.ArgumentParser):
+    """ArgumentParser which prints help by default on any arg parsing error"""
+    def error(self, message):
+        self.print_help()
+        sys.exit(2)
+        
 class ElasticStat:
     """ElasticStat Utility Class"""
     
-    def __init__(self, host, port, username, password, check_interval, local_time=False):
+    def __init__(self, host, port, username, password, delay_interval):
 
-        self.sleep_interval = check_interval
-        self.local_time = local_time
+        self.sleep_interval = delay_interval
         self.node_counters = {}
         self.node_counters['gc'] = {}
         self.node_counters['fd'] = {}
@@ -65,6 +69,7 @@ class ElasticStat:
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
         
+        # 
         # check for port in host
         if ':' in host:
             host, port = host.split(':')
@@ -73,6 +78,8 @@ class ElasticStat:
         
         # check for auth
         if username is not None:
+            if password is None or password == 'PROMPT':
+                password = getpass.getpass()
             host_dict['http_auth'] = (username, password)
         
         self.es_client = Elasticsearch([host_dict])
@@ -200,14 +207,15 @@ class ElasticStat:
         
         return(NODES_TEMPLATE.format(**processed_node))
             
-    def process_role(self, role, nodes_stats, node_results):
+    def process_role(self, role, nodes_stats):
+        procs = []
         for node_id in self.nodes_by_role[role]:
             if node_id not in nodes_stats['nodes']:
                 # did not get any data on this node, likely it left the cluster
                 failed_node = {}
                 failed_node['name'] = self.node_names[node_id]
                 failed_node['role'] = "({0})".format(role) # Role it had when we last saw this node in the cluster
-                node_results.put(NODES_FAILED_TEMPLATE.format(**failed_node))
+                print NODES_FAILED_TEMPLATE.format(**failed_node)
             else:
                 # make sure node's role hasn't changed
                 current_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
@@ -215,11 +223,10 @@ class ElasticStat:
                     # Role changed, update lists so output will be correct on next iteration
                     self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
                     self.nodes_by_role[role].remove(node_id) # remove from current role
-                node_results.put(self.process_node(current_role, nodes_stats['nodes'][node_id]))
+                print self.process_node(current_role, nodes_stats['nodes'][node_id])
                 
     def printStats(self):
         counter = 0
-        node_results = SimpleQueue()
 
         # just run forever until ctrl-c
         while True:
@@ -254,64 +261,51 @@ class ElasticStat:
                         self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
                         node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
                         self.nodes_by_role.setdefault(node_role, []).append(node_id)
-            
-            for role in self.nodes_by_role:
-                self.process_role(role, nodes_stats, node_results)
                
             # Print node stats
             print NODES_TEMPLATE.format(**NODE_HEADINGS)
-            while not node_results.empty():
-                print node_results.get()
+            for role in self.nodes_by_role:
+                self.process_role(role, nodes_stats)
             print "" # space out each run for readability
-            time.sleep(1)
+            time.sleep(self.sleep_interval)
 
 
 def main():
     # get command line input
-    parser = argparse.ArgumentParser(description='Elasticsearch command line metrics')
+    parser = ESArgParser(description='Elasticsearch command line metrics', add_help=False)
 
-    parser.add_argument('-H',
+    parser.add_argument('-h',
                         '--host',
+                        default='localhost',
                         dest='hostlist',
-                        required=True,
-                        help='Comma-delimited list of hosts')
-
-    parser.add_argument('-P',
-                        '--port',
+                        help='Host in Elasticsearch cluster (or a comma-delimited list of hosts)')
+    parser.add_argument('--port',
                         dest='port',
                         default=9200,
-                        help='HTTP Port (optional)')
+                        help='HTTP Port (or include as host:port in HOSTLIST)')
     parser.add_argument('-u',
                         '--username',
                         dest='username',
                         default=None,
-                        help='Username (optional)')
-    
+                        help='Username')
     parser.add_argument('-p',
                         '--password',
                         dest='password',
+                        nargs='?',
+                        const='PROMPT',
                         default=None,
-                        help='Password (optional)')
-
-    parser.add_argument('-C',
-                        '--check-interval',
-                        dest='check_interval',
-                        default='5',
+                        help='Password')
+    parser.add_argument('delay_interval',
+                        default='1',
+                        nargs='?',
                         type=int,
-                        choices=(1, 5, 10, 15, 30, 60),
-                        metavar='CHECKINTERVAL',
-                        help='how often to poll for data')
-    parser.add_argument('-l',
-                        '--local-time',
-                        dest='local_time',
-                        default=False,
-                        action='store_true',
-                        help='compute stats using a local timestamp instead of sleep time')
+                        metavar='DELAYINTERVAL',
+                        help='How long to delay between checks')
 
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit())
-    elasticstat = ElasticStat(args.hostlist, args.username, args.password, args.check_interval, args.local_time)
+    elasticstat = ElasticStat(args.hostlist, args.port, args.username, args.password, args.delay_interval)
     elasticstat.printStats()
 
 
