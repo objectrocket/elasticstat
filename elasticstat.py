@@ -6,6 +6,8 @@ import signal
 import sys
 import time
 
+from multiprocessing.queues import SimpleQueue
+
 from elasticsearch import Elasticsearch
 
 # cluster_name status shards pri relo init unassign pending_tasks timestamp
@@ -22,7 +24,8 @@ CLUSTER_HEADINGS["number_of_pending_tasks"] = "pending tasks"
 CLUSTER_HEADINGS["timestamp"] = "time"
 
 # node_name role load_avg mem% heap%  old sz old gc young gc
-NODES_TEMPLATE = """{name:24} {role:<4} {load_avg:>18}   {used_mem:>4} {used_heap:>4}  {old_gc_sz:8} {old_gc:8} {young_gc:8}   {index_threads:<8} {search_threads:<8} {bulk_threads:<8} {get_threads:<8} {merge_threads:<8} {fielddata:^7}   {http_conn:>6} {transport_conn:>6}   {merge_time:>8} {store_throttle:>8}  {docs}"""
+NODES_TEMPLATE = """{name:24} {role:<6} {load_avg:>18}   {used_mem:>4} {used_heap:>4}  {old_gc_sz:8} {old_gc:8} {young_gc:8}   {index_threads:<8} {search_threads:<8} {bulk_threads:<8} {get_threads:<8} {merge_threads:<8} {fielddata:^7}   {http_conn:>6} {transport_conn:>6}   {merge_time:>8} {store_throttle:>8}  {docs}"""
+NODES_FAILED_TEMPLATE = """{name:24} {role:<6} (No data received, node may have left cluster)"""
 NODE_HEADINGS = {}
 NODE_HEADINGS["name"] = "nodes"
 NODE_HEADINGS["role"] = "role"
@@ -56,8 +59,11 @@ class ElasticStat:
         self.node_counters['gc'] = {}
         self.node_counters['fd'] = {}
         self.node_counters['hconn'] = {}
-        self.nodes_list = {}
-        self.nodes_by_role = {}
+        self.nodes_list = [] # used for detecting new nodes
+        self.nodes_by_role = {} # main list of nodes, organized by role
+        self.node_names = {} # node names, organized by id
+        self.new_nodes = [] # used to track new nodes that join the cluster
+        self.active_master = ""
         
         # check for port in host
         if ':' in host:
@@ -146,15 +152,80 @@ class ElasticStat:
             open_delta = http_conns['total_opened'] - self.node_counters['hconn'][node_name]
             self.node_counters['hconn'][node_name] = http_conns['total_opened']
             return("{0}|{1}".format(http_conns['current_open'], open_delta))
+
+    def process_node(self, role, node):
+        processed_node = {}
+        processed_node['name'] = node['name']
+        processed_node['role'] = role
+        if processed_node['name'] == self.active_master:
+            # Flag active master in role column
+            processed_node['role'] += "*"
+            
+        # Load / mem / heap
+        processed_node['load_avg'] = "/".join(str(x) for x in node['os']['load_average'])
+        processed_node['used_mem'] = "{0}%".format(node['os']['mem']['used_percent'])
+        processed_node['used_heap'] = "{0}%".format(node['jvm']['mem']['heap_used_percent'])
         
+        # GC counters
+        processed_node['old_gc_sz'] = node['jvm']['mem']['pools']['old']['used']
+        node_gc_stats = node['jvm']['gc']['collectors']
+        processed_node['old_gc'], processed_node['young_gc'] = self.get_gc_stats(processed_node['name'], node_gc_stats)
+        
+        # Threads
+        for pool in THREAD_POOLS:
+            processed_node[pool + '_threads'] = "{0}|{1}|{2}".format(node['thread_pool'][pool]['active'],
+                                                                  node['thread_pool'][pool]['queue'],
+                                                                  node['thread_pool'][pool]['rejected'])
+        
+        # Field data evictions | circuit break trips
+        processed_node['fielddata'] = self.get_fd_stats(processed_node['name'],
+                                                     node['indices']['fielddata']['evictions'],
+                                                     node['breakers']['fielddata']['tripped'])    
+        
+        # Connections
+        processed_node['http_conn'] = self.get_http_conns(processed_node['name'],
+                                                   node['http'])
+        processed_node['transport_conn'] = node['transport']['server_open']
+        
+        # Misc
+        if role in ['DATA', 'ALL']:
+            processed_node['merge_time'] = node['indices']['merges']['total_time']
+            processed_node['store_throttle'] = node['indices']['store']['throttle_time']
+            processed_node['docs'] = "{0}|{1}".format(node['indices']['docs']['count'],
+                                                   node['indices']['docs']['deleted'])
+        else:
+            processed_node['merge_time'] = "-"
+            processed_node['store_throttle'] = "-"
+            processed_node['docs'] = "-|-"
+        
+        return(NODES_TEMPLATE.format(**processed_node))
+            
+    def process_role(self, role, nodes_stats, node_results):
+        for node_id in self.nodes_by_role[role]:
+            if node_id not in nodes_stats['nodes']:
+                # did not get any data on this node, likely it left the cluster
+                failed_node = {}
+                failed_node['name'] = self.node_names[node_id]
+                failed_node['role'] = "({0})".format(role) # Role it had when we last saw this node in the cluster
+                node_results.put(NODES_FAILED_TEMPLATE.format(**failed_node))
+            else:
+                # make sure node's role hasn't changed
+                current_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+                if current_role != role:
+                    # Role changed, update lists so output will be correct on next iteration
+                    self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
+                    self.nodes_by_role[role].remove(node_id) # remove from current role
+                node_results.put(self.process_node(current_role, nodes_stats['nodes'][node_id]))
+                
     def printStats(self):
         counter = 0
+        node_results = SimpleQueue()
 
         # just run forever until ctrl-c
         while True:
             cluster_health = self.es_client.cluster.health()
             nodes_stats = self.es_client.nodes.stats(human=True)
-            active_master = self.es_client.cat.master(h="node").strip() # needed to remove trailing newline
+            self.active_master = self.es_client.cat.master(h="node").strip() # needed to remove trailing newline
 
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
@@ -162,62 +233,35 @@ class ElasticStat:
             print CLUSTER_TEMPLATE.format(**cluster_health)
             print "" # space for readability
             
-            if len(nodes_by_role) == 0:
+            # Nodes can join and leave cluster with each iteration -- in order to report on nodes
+            # that have left the cluster, maintain a list grouped by role.
+            current_nodes_count = len(self.nodes_list)
+            if current_nodes_count == 0:
                 # First run, so we need to build the list of nodes by role
                 for node_id in nodes_stats['nodes']:
+                    self.nodes_list.append(node_id)
+                    self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
                     node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
                     self.nodes_by_role.setdefault(node_role, []).append(node_id)
-                    
+            else:
+                # Check for new nodes that have joined the cluster
+                self.new_nodes = []
+                if len(nodes_stats['nodes']) > current_nodes_count:
+                    # At least one new node found, so add it to the list
+                    self.new_nodes = list(set(nodes_stats['nodes']) - set(self.nodes_list))
+                    for node_id in self.new_nodes:
+                        self.nodes_list.append(node_id)
+                        self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
+                        node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+                        self.nodes_by_role.setdefault(node_role, []).append(node_id)
+            
+            for role in self.nodes_by_role:
+                self.process_role(role, nodes_stats, node_results)
+               
             # Print node stats
             print NODES_TEMPLATE.format(**NODE_HEADINGS)
-            for node_id in nodes_stats['nodes']:
-                node_result = {}
-                node = nodes_stats['nodes'][node_id]
-                node_result['name'] = node['name']
-                node_result['role'] = self.get_role(node['attributes'])
-                if node_result['name'] == active_master:
-                    # Flag active master in role column
-                    node_result['role'] += "*"
-                    
-                # Load / mem / heap
-                node_result['load_avg'] = "/".join(str(x) for x in node['os']['load_average'])
-                node_result['used_mem'] = "{0}%".format(node['os']['mem']['used_percent'])
-                node_result['used_heap'] = "{0}%".format(node['jvm']['mem']['heap_used_percent'])
-                
-                # GC counters
-                node_result['old_gc_sz'] = node['jvm']['mem']['pools']['old']['used']
-                node_gc_stats = node['jvm']['gc']['collectors']
-                node_result['old_gc'], node_result['young_gc'] = self.get_gc_stats(node_result['name'], node_gc_stats)
-                
-                # Threads
-                for pool in THREAD_POOLS:
-                    node_result[pool + '_threads'] = "{0}|{1}|{2}".format(node['thread_pool'][pool]['active'],
-                                                                          node['thread_pool'][pool]['queue'],
-                                                                          node['thread_pool'][pool]['rejected'])
-                
-                # Field data evictions | circuit break trips
-                node_result['fielddata'] = self.get_fd_stats(node_result['name'],
-                                                             node['indices']['fielddata']['evictions'],
-                                                             node['breakers']['fielddata']['tripped'])    
-                
-                # Connections
-                node_result['http_conn'] = self.get_http_conns(node_result['name'],
-                                                           node['http'])
-                node_result['transport_conn'] = node['transport']['server_open']
-                
-                # Misc
-                if node_result['role'] in ['DATA', 'ALL']:
-                    node_result['merge_time'] = node['indices']['merges']['total_time']
-                    node_result['store_throttle'] = node['indices']['store']['throttle_time']
-                    node_result['docs'] = "{0}|{1}".format(node['indices']['docs']['count'],
-                                                           node['indices']['docs']['deleted'])
-                else:
-                    node_result['merge_time'] = "-"
-                    node_result['store_throttle'] = "-"
-                    node_result['docs'] = "-|-"
-                
-                print NODES_TEMPLATE.format(**node_result)
-
+            while not node_results.empty():
+                print node_results.get()
             print "" # space out each run for readability
             time.sleep(1)
 
