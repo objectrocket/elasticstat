@@ -111,75 +111,78 @@ class ElasticStat:
             # client node (using RTR like monogostat)
             return "RTR"
         else:
-            # uh, wat? no idea if we get to here
+            # uh, wat? no idea if we reach here
             return "UNK"
         
-    def get_gc_stats(self, node_name, node_gc_stats):
+    def get_gc_stats(self, node_id, node_gc_stats):
         # check if this is a new node
-        if node_name not in self.node_counters['gc']:
+        if node_id not in self.node_counters['gc']:
             # new so init counters and return no data
-            self.node_counters['gc'][node_name] = {'old': 0, 'young': 0}
-            self.node_counters['gc'][node_name]['old'] = node_gc_stats['old']['collection_count']
-            self.node_counters['gc'][node_name]['young'] = node_gc_stats['young']['collection_count']
+            self.node_counters['gc'][node_id] = {'old': 0, 'young': 0}
+            self.node_counters['gc'][node_id]['old'] = node_gc_stats['old']['collection_count']
+            self.node_counters['gc'][node_id]['young'] = node_gc_stats['young']['collection_count']
             return("-|-", "-|-")
         else:
             # existing node, so calculate the new deltas, update counters, and return results
             old_gc_count = node_gc_stats['old']['collection_count']
             young_gc_count = node_gc_stats['young']['collection_count']
-            old_gc_delta = old_gc_count - self.node_counters['gc'][node_name]['old']
-            young_gc_delta = young_gc_count - self.node_counters['gc'][node_name]['young']
-            self.node_counters['gc'][node_name]['old'] = old_gc_count
-            self.node_counters['gc'][node_name]['young'] = young_gc_count
+            old_gc_delta = old_gc_count - self.node_counters['gc'][node_id]['old']
+            young_gc_delta = young_gc_count - self.node_counters['gc'][node_id]['young']
+            self.node_counters['gc'][node_id]['old'] = old_gc_count
+            self.node_counters['gc'][node_id]['young'] = young_gc_count
             old_gc_results = "{0}|{0}ms".format(old_gc_delta, node_gc_stats['old']['collection_time_in_millis'])
             young_gc_results = "{0}|{0}ms".format(young_gc_delta, node_gc_stats['young']['collection_time_in_millis'])
             return(old_gc_results, young_gc_results)
     
-    def get_fd_stats(self, node_name, current_evictions, current_tripped):
+    def get_fd_stats(self, node_id, current_evictions, current_tripped):
         # check if this is a new node
-        if node_name not in self.node_counters['fd']:
+        if node_id not in self.node_counters['fd']:
             # new so init counters and return no data
-            self.node_counters['fd'][node_name] = {'fde': 0, 'fdt': 0}
-            self.node_counters['fd'][node_name]['fde'] = current_evictions
-            self.node_counters['fd'][node_name]['fdt'] = current_tripped
+            self.node_counters['fd'][node_id] = {'fde': 0, 'fdt': 0}
+            self.node_counters['fd'][node_id]['fde'] = current_evictions
+            self.node_counters['fd'][node_id]['fdt'] = current_tripped
             return("-|-")
         else:
             # existing node, so calc new deltas, update counters, and return results
-            fde_delta = current_evictions - self.node_counters['fd'][node_name]['fde']
-            self.node_counters['fd'][node_name]['fde'] = current_evictions
-            fdt_delta = current_tripped - self.node_counters['fd'][node_name]['fdt']
-            self.node_counters['fd'][node_name]['fdt'] = current_tripped
+            fde_delta = current_evictions - self.node_counters['fd'][node_id]['fde']
+            self.node_counters['fd'][node_id]['fde'] = current_evictions
+            fdt_delta = current_tripped - self.node_counters['fd'][node_id]['fdt']
+            self.node_counters['fd'][node_id]['fdt'] = current_tripped
             return("{0}|{1}".format(fde_delta, fdt_delta))
         
-    def get_http_conns(self, node_name, http_conns):
+    def get_http_conns(self, node_id, http_conns):
         # check if this is a new node
-        if node_name not in self.node_counters['hconn']:
-            self.node_counters['hconn'][node_name] = http_conns['total_opened']
+        if node_id not in self.node_counters['hconn']:
+            self.node_counters['hconn'][node_id] = http_conns['total_opened']
             return ("{0}|-".format(http_conns['current_open']))
         else:
-            open_delta = http_conns['total_opened'] - self.node_counters['hconn'][node_name]
-            self.node_counters['hconn'][node_name] = http_conns['total_opened']
+            open_delta = http_conns['total_opened'] - self.node_counters['hconn'][node_id]
+            self.node_counters['hconn'][node_id] = http_conns['total_opened']
             return("{0}|{1}".format(http_conns['current_open'], open_delta))
 
     def process_node(self, role, node_id, node):
         processed_node = {}
-        processed_node['name'] = node['name']
-        processed_node['role'] = role
-        if self.active_master == node_id:
-            # Flag active master in role column
-            processed_node['role'] += "*"
+        # Node name and role
         if node_id in self.new_nodes:
             # Flag that this is a node that joined the cluster this round
-            processed_node['name'] = "+" + processed_node['name']
-            
-        # Load / mem / heap
+            processed_node['name'] = "+" + node['name']
+        else:
+            processed_node['name'] = node['name']
+        if self.active_master == node_id:
+            # Flag active master in role column
+            processed_node['role'] = "*" + role
+        else:
+            processed_node['role'] = role
+
+        # Load / memory used / heap used
         processed_node['load_avg'] = "/".join(str(x) for x in node['os']['load_average'])
         processed_node['used_mem'] = "{0}%".format(node['os']['mem']['used_percent'])
         processed_node['used_heap'] = "{0}%".format(node['jvm']['mem']['heap_used_percent'])
         
-        # GC counters
+        # GC counters and old region size
         processed_node['old_gc_sz'] = node['jvm']['mem']['pools']['old']['used']
         node_gc_stats = node['jvm']['gc']['collectors']
-        processed_node['old_gc'], processed_node['young_gc'] = self.get_gc_stats(processed_node['name'], node_gc_stats)
+        processed_node['old_gc'], processed_node['young_gc'] = self.get_gc_stats(node_id, node_gc_stats)
         
         # Threads
         for pool in THREAD_POOLS:
@@ -187,17 +190,16 @@ class ElasticStat:
                                                                   node['thread_pool'][pool]['queue'],
                                                                   node['thread_pool'][pool]['rejected'])
         
-        # Field data evictions | circuit break trips
-        processed_node['fielddata'] = self.get_fd_stats(processed_node['name'],
+        # Field data evictions (fde) | circuit breaker trips (fdt)
+        processed_node['fielddata'] = self.get_fd_stats(node_id,
                                                      node['indices']['fielddata']['evictions'],
                                                      node['breakers']['fielddata']['tripped'])    
         
         # Connections
-        processed_node['http_conn'] = self.get_http_conns(processed_node['name'],
-                                                   node['http'])
+        processed_node['http_conn'] = self.get_http_conns(node_id, node['http'])
         processed_node['transport_conn'] = node['transport']['server_open']
         
-        # Misc
+        # Data node specific metrics
         if role in ['DATA', 'ALL']:
             processed_node['merge_time'] = node['indices']['merges']['total_time']
             processed_node['store_throttle'] = node['indices']['store']['throttle_time']
