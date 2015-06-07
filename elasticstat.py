@@ -53,8 +53,8 @@ class ESArgParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(2)
         
-class ElasticStat:
-    """ElasticStat Utility Class"""
+class Elasticstat:
+    """Elasticstat"""
     
     def __init__(self, host, port, username, password, delay_interval):
 
@@ -69,7 +69,6 @@ class ElasticStat:
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
         
-        # 
         # check for port in host
         if ':' in host:
             host, port = host.split(':')
@@ -221,7 +220,7 @@ class ElasticStat:
                 failed_node_name = self.node_names[node_id]
                 new_nodes_by_name = {nodes_stats['nodes'][id]['name']: id for id in self.new_nodes}
                 if failed_node_name in new_nodes_by_name:
-                    # ...found it!  Remove the old node_id, we've already added the new node at this point
+                    # ...found it!  Remove the old node_id, we've already added the new node_id at this point
                     new_node_id = new_nodes_by_name[failed_node_name] 
                     self.new_nodes.remove(new_node_id) # So we don't flag this as a new node visually
                     self.nodes_list.remove(node_id)
@@ -241,7 +240,7 @@ class ElasticStat:
                 self.nodes_by_role[role].remove(node_id) # remove from current role
             print self.process_node(current_role, node_id, nodes_stats['nodes'][node_id])
                 
-    def printStats(self):
+    def print_stats(self):
         counter = 0
 
         # just run forever until ctrl-c
@@ -320,8 +319,8 @@ def main():
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit())
-    elasticstat = ElasticStat(args.hostlist, args.port, args.username, args.password, args.delay_interval)
-    elasticstat.printStats()
+    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.delay_interval)
+    elasticstat.print_stats()
 
 
 if __name__ == "__main__":
