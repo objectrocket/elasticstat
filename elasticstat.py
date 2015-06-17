@@ -9,8 +9,7 @@ import time
 
 from elasticsearch import Elasticsearch
 
-# cluster_name status shards pri relo init unassign pending_tasks timestamp
-CLUSTER_TEMPLATE = """{cluster_name:33} {status:6} {active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8} {number_of_pending_tasks:>13}  {timestamp:8}"""
+CLUSTER_TEMPLATE = """{cluster_name:33} {status:6}   {active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8}   {number_of_pending_tasks:>13}   {timestamp:8}"""
 CLUSTER_HEADINGS = {}
 CLUSTER_HEADINGS["cluster_name"] = "cluster"
 CLUSTER_HEADINGS["status"] = "status"
@@ -22,7 +21,6 @@ CLUSTER_HEADINGS["unassigned_shards"] = "unassign"
 CLUSTER_HEADINGS["number_of_pending_tasks"] = "pending tasks"
 CLUSTER_HEADINGS["timestamp"] = "time"
 
-# node_name role load_avg mem% heap%  old sz old gc young gc
 NODES_TEMPLATE = {}
 NODES_TEMPLATE['general'] = """{name:24} {role:<6}"""
 NODES_TEMPLATE['os'] = """{load_avg:>18} {used_mem:>4}"""
@@ -31,7 +29,7 @@ NODES_TEMPLATE['threads'] = """{threads:<8}"""
 NODES_TEMPLATE['fielddata'] = """{fielddata:^7}"""
 NODES_TEMPLATE['connections'] = """{http_conn:>6} {transport_conn:>6}"""
 NODES_TEMPLATE['data_nodes'] = """{merge_time:>8} {store_throttle:>8}  {docs}"""
-NODES_FAILED_TEMPLATE = """{name:24} {role:<6} (No data received, node may have left cluster)"""
+NODES_FAILED_TEMPLATE = """{name:24} {role:<6}       (No data received, node may have left cluster)"""
 NODE_HEADINGS = {}
 NODE_HEADINGS["name"] = "nodes"
 NODE_HEADINGS["role"] = "role"
@@ -61,10 +59,21 @@ class ESArgParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(2)
         
+class ESColors:
+    """ANSI escape codes for color output"""
+    END = '\033[00m'
+    RED = '\033[0;31m'
+    GREEN = '\033[0;32m'
+    YELLOW = '\033[0;33m'
+    GRAY = '\033[1;30m'
+    WHITE = '\033[1;37m'
+    
 class Elasticstat:
     """Elasticstat"""
     
-    def __init__(self, host, port, username, password, delay_interval, categories, threadpools):
+    STATUS_COLOR = {'red': ESColors.RED, 'green': ESColors.GREEN, 'yellow': ESColors.YELLOW}
+    
+    def __init__(self, host, port, username, password, delay_interval, categories, threadpools, no_color):
 
         self.sleep_interval = delay_interval
         self.node_counters = {}
@@ -77,6 +86,7 @@ class Elasticstat:
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
         self.threadpools = threadpools
+        self.no_color = no_color
         
         # categories for display
         if categories == 'all':
@@ -98,6 +108,12 @@ class Elasticstat:
         
         self.es_client = Elasticsearch([host_dict])
 
+    def colorize(self, msg, color):
+        if self.no_color == True:
+            return(msg)
+        else:
+            return(color + msg + ESColors.END)
+        
     def thetime(self):
         return datetime.datetime.now().strftime("%H:%M:%S")
     
@@ -213,9 +229,10 @@ class Elasticstat:
         return(" ".join(thread_segments))
     
     def process_node_fielddata(self, role, node_id, node):
-        return(self.get_fd_stats(node_id,
-                                 node['indices']['fielddata']['evictions'],
-                                 node['breakers']['fielddata']['tripped']))
+        fielddata = self.get_fd_stats(node_id,
+                                      node['indices']['fielddata']['evictions'],
+                                      node['breakers']['fielddata']['tripped'])
+        return(NODES_TEMPLATE['fielddata'].format(fielddata=fielddata))
         
     def process_node_connections(self, role, node_id, node):
         processed_node_conns = {}
@@ -229,12 +246,16 @@ class Elasticstat:
         if role in ['DATA', 'ALL']:
             processed_node_dn['merge_time'] = node['indices']['merges']['total_time']
             processed_node_dn['store_throttle'] = node['indices']['store']['throttle_time']
-            processed_node_dn['docs'] = "{0}|{1}".format(node['indices']['docs']['count'],
-                                                         node['indices']['docs']['deleted'])
+            doc_count = node['indices']['docs']['count']
+            deleted_count = node['indices']['docs']['deleted']
+            if deleted_count > 0:
+                processed_node_dn['docs'] = "{0}|{1}".format(doc_count, deleted_count)
+            else:
+                processed_node_dn['docs'] = str(doc_count)
         else:
             processed_node_dn['merge_time'] = "-"
             processed_node_dn['store_throttle'] = "-"
-            processed_node_dn['docs'] = "-|-"
+            processed_node_dn['docs'] = "-"
         return(NODES_TEMPLATE['data_nodes'].format(**processed_node_dn))        
                
     def process_node(self, role, node_id, node):
@@ -254,16 +275,15 @@ class Elasticstat:
                 new_nodes_by_name = {nodes_stats['nodes'][id]['name']: id for id in self.new_nodes}
                 if failed_node_name in new_nodes_by_name:
                     # ...found it!  Remove the old node_id, we've already added the new node_id at this point
-                    new_node_id = new_nodes_by_name[failed_node_name] 
-                    self.new_nodes.remove(new_node_id) # So we don't flag this as a new node visually
+                    new_node_id = new_nodes_by_name[failed_node_name]
                     self.nodes_list.remove(node_id)
                     self.node_names.pop(node_id)
                     self.nodes_by_role[role].remove(node_id)
                 else:
                     failed_node = {}
-                    failed_node['name'] = "-" + failed_node_name
+                    failed_node['name'] = failed_node_name + '-'
                     failed_node['role'] = "({0})".format(role) # Role it had when we last saw this node in the cluster
-                    print NODES_FAILED_TEMPLATE.format(**failed_node)
+                    print self.colorize(NODES_FAILED_TEMPLATE.format(**failed_node), ESColors.GRAY)
                 continue
             # make sure node's role hasn't changed
             current_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
@@ -271,7 +291,11 @@ class Elasticstat:
                 # Role changed, update lists so output will be correct on next iteration
                 self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
                 self.nodes_by_role[role].remove(node_id) # remove from current role
-            print self.process_node(current_role, node_id, nodes_stats['nodes'][node_id])
+            row = self.process_node(current_role, node_id, nodes_stats['nodes'][node_id])
+            if node_id in self.new_nodes:
+                print self.colorize(row, ESColors.WHITE)
+            else:
+                print row
 
     def get_threads_headings(self):
         thread_segments = []
@@ -305,8 +329,10 @@ class Elasticstat:
 
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
-            print self.cluster_headings
-            print CLUSTER_TEMPLATE.format(**cluster_health)
+            status = cluster_health['status']
+            #cluster_health['status'] = self.colorize(status, self.STATUS_COLOR[status])
+            print self.colorize(self.cluster_headings, ESColors.GRAY)
+            print self.colorize(CLUSTER_TEMPLATE.format(**cluster_health), self.STATUS_COLOR[status])
             print "" # space for readability
             
             # Nodes can join and leave cluster with each iteration -- in order to report on nodes
@@ -331,7 +357,7 @@ class Elasticstat:
                         self.nodes_by_role.setdefault(node_role, []).append(node_id)
                
             # Print node stats
-            print self.node_headings
+            print self.colorize(self.node_headings, ESColors.GRAY)
             for role in self.nodes_by_role:
                 self.process_role(role, nodes_stats)
             print "" # space out each run for readability
@@ -370,13 +396,19 @@ def main():
                         metavar='CATEGORY',
                         nargs='+',
                         help='Statistic categories to show')
-    parser.add_argument('-T',
+    parser.add_argument('-t',
                         '--threadpools',
                         dest='threadpools',
                         default=DEFAULT_THREAD_POOLS,
                         metavar='THREADPOOL',
                         nargs='+',
                         help='Thread pools to show')
+    parser.add_argument('-C',
+                        '--no-color',
+                        dest='no_color',
+                        action='store_true',
+                        default=False,
+                        help='Display without color output')
     parser.add_argument('delay_interval',
                         default='1',
                         nargs='?',
@@ -387,7 +419,7 @@ def main():
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit())
-    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.delay_interval, args.categories, args.threadpools)
+    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.delay_interval, args.categories, args.threadpools, args.no_color)
     elasticstat.format_headings()
     elasticstat.print_stats()
 
