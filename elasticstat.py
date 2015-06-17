@@ -74,7 +74,6 @@ class Elasticstat:
     STATUS_COLOR = {'red': ESColors.RED, 'green': ESColors.GREEN, 'yellow': ESColors.YELLOW}
     
     def __init__(self, host, port, username, password, delay_interval, categories, threadpools, no_color):
-
         self.sleep_interval = delay_interval
         self.node_counters = {}
         self.node_counters['gc'] = {}
@@ -85,14 +84,9 @@ class Elasticstat:
         self.node_names = {} # node names, organized by id
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
-        self.threadpools = threadpools
         self.no_color = no_color
-        
-        # categories for display
-        if categories == 'all':
-            self.categories = CATEGORIES
-        else:
-            self.categories = ['general'] + categories
+        self.threadpools = self._parse_threadpools(threadpools)
+        self.categories = self._parse_categories(categories)
         
         # check for port in host
         if ':' in host:
@@ -108,6 +102,26 @@ class Elasticstat:
         
         self.es_client = Elasticsearch([host_dict])
 
+    def _parse_categories(self, categories):
+        if isinstance(categories, list):
+            if categories[0] == 'all':
+                return CATEGORIES
+            if ',' in categories[0]:
+                categories = categories[0].split(',')
+        else:
+            if categories == 'all':
+                return CATEGORIES
+        for category in categories:
+            if category not in CATEGORIES:
+                msg = "{0} is not valid, please choose categories from {1}".format(category, ', '.join(CATEGORIES[1:]))
+                raise argparse.ArgumentTypeError(msg)
+        return ['general'] + categories
+    
+    def _parse_threadpools(self, threadpools):
+        if isinstance(threadpools, list) and ',' in threadpools[0]:
+            threadpools = threadpools[0].split(',')
+        return threadpools
+    
     def colorize(self, msg, color):
         if self.no_color == True:
             return(msg)
@@ -319,8 +333,6 @@ class Elasticstat:
         self.node_headings = "   ".join(node_heading_segments)
         
     def print_stats(self):
-        counter = 0
-
         # just run forever until ctrl-c
         while True:
             cluster_health = self.es_client.cluster.health()
@@ -330,10 +342,9 @@ class Elasticstat:
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
             status = cluster_health['status']
-            #cluster_health['status'] = self.colorize(status, self.STATUS_COLOR[status])
             print self.colorize(self.cluster_headings, ESColors.GRAY)
             print self.colorize(CLUSTER_TEMPLATE.format(**cluster_health), self.STATUS_COLOR[status])
-            print "" # space for readability
+            #print "" # space for readability
             
             # Nodes can join and leave cluster with each iteration -- in order to report on nodes
             # that have left the cluster, maintain a list grouped by role.
@@ -395,7 +406,7 @@ def main():
                         default='all',
                         metavar='CATEGORY',
                         nargs='+',
-                        help='Statistic categories to show')
+                        help='Statistic categories to show [all or choose from {0}]'.format(', '.join(CATEGORIES[1:])))
     parser.add_argument('-t',
                         '--threadpools',
                         dest='threadpools',
