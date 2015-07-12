@@ -8,6 +8,7 @@ import sys
 import time
 
 from elasticsearch import Elasticsearch
+from urllib3.util import parse_url
 
 CLUSTER_TEMPLATE = """{cluster_name:33} {status:6}   {active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8}   {number_of_pending_tasks:>13}   {timestamp:8}"""
 CLUSTER_HEADINGS = {}
@@ -39,11 +40,6 @@ NODE_HEADINGS["used_heap"] = "heap"
 NODE_HEADINGS["old_gc_sz"] = "old sz"
 NODE_HEADINGS["old_gc"] = "old gc"
 NODE_HEADINGS["young_gc"] = "young gc"
-NODE_HEADINGS["index_threads"] = "index"
-NODE_HEADINGS["bulk_threads"] = "bulk"
-NODE_HEADINGS["get_threads"] = "get"
-NODE_HEADINGS["search_threads"] = "search"
-NODE_HEADINGS["merge_threads"] = "merge"
 NODE_HEADINGS["fielddata"] = "fde|fdt"
 NODE_HEADINGS["http_conn"] = "hconn"
 NODE_HEADINGS["transport_conn"] = "tconn"
@@ -73,7 +69,7 @@ class Elasticstat:
     
     STATUS_COLOR = {'red': ESColors.RED, 'green': ESColors.GREEN, 'yellow': ESColors.YELLOW}
     
-    def __init__(self, host, port, username, password, delay_interval, categories, threadpools, no_color):
+    def __init__(self, host, port, username, password, use_ssl, delay_interval, categories, threadpools, no_color):
         self.sleep_interval = delay_interval
         self.node_counters = {}
         self.node_counters['gc'] = {}
@@ -88,20 +84,40 @@ class Elasticstat:
         self.threadpools = self._parse_threadpools(threadpools)
         self.categories = self._parse_categories(categories)
         
-        # check for port in host
-        if ':' in host:
-            host, port = host.split(':')
-        
-        host_dict = {'host': host, 'port': port}
-        
-        # check for auth
-        if username is not None:
-            if password is None or password == 'PROMPT':
-                password = getpass.getpass()
-            host_dict['http_auth'] = (username, password)
-        
-        self.es_client = Elasticsearch([host_dict])
+        # Create Elasticsearch client
+        self.es_client = Elasticsearch(self._parse_connection_properties(host, port, username, password, use_ssl))
 
+    def _parse_connection_properties(self, host, port, username, password, use_ssl):
+        hosts_list = []
+        
+        if isinstance(host, string):
+            # Force to a list, split on ',' if multiple
+            host = host.split(',')
+        
+        for entity in host:
+            # Loop over the hosts and parse connection properties
+            host_properties = {}
+            
+            parsed_uri = parse_url(entity)
+            host_properties['host'] = parsed_uri.host
+            if parsed_uri.port is not None:
+                host_properties['port'] = parsed_uri.port
+            else:
+                host_properties['port'] = port
+                
+            if parsed_uri.scheme == 'https' or use_ssl == True:
+                host_properties['use_ssl'] = True
+                
+            if parsed_uri.auth is not None:
+                host_properties['http_auth'] = parsed_uri.auth
+            elif username is not None:
+                if password is None or password == 'PROMPT':
+                    password = getpass.getpass()
+                host_properties['http_auth'] = (username, password)                
+                
+            hosts_list.append(host_properties)
+        return hosts_list
+                
     def _parse_categories(self, categories):
         if isinstance(categories, list):
             if categories[0] == 'all':
@@ -400,6 +416,11 @@ def main():
                         const='PROMPT',
                         default=None,
                         help='Password')
+    parser.add_argument('--ssl',
+                        dest='use_ssl',
+                        default=False,
+                        action='store_true',
+                        help='Connect using TLS/SSL')
     parser.add_argument('-c',
                         '--categories',
                         dest='categories',
@@ -430,7 +451,7 @@ def main():
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit())
-    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.delay_interval, args.categories, args.threadpools, args.no_color)
+    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.use_ssl, args.delay_interval, args.categories, args.threadpools, args.no_color)
     elasticstat.format_headings()
     elasticstat.print_stats()
 
