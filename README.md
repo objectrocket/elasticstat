@@ -1,5 +1,6 @@
 # Elasticstat
 
+```
 usage: elasticstat.py [-h HOSTLIST] [--port PORT] [-u USERNAME]
                       [-p [PASSWORD]] [--ssl] [-c CATEGORY [CATEGORY ...]]
                       [-t THREADPOOL [THREADPOOL ...]] [-C]
@@ -26,3 +27,4 @@ optional arguments:
   -t THREADPOOL [THREADPOOL ...], --threadpools THREADPOOL [THREADPOOL ...]
                         Thread pools to show
   -C, --no-color        Display without color output
+```
