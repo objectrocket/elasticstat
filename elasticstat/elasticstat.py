@@ -90,7 +90,7 @@ class Elasticstat:
     def _parse_connection_properties(self, host, port, username, password, use_ssl):
         hosts_list = []
         
-        if isinstance(host, string):
+        if isinstance(host, str):
             # Force to a list, split on ',' if multiple
             host = host.split(',')
         
