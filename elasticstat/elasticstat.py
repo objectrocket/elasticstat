@@ -430,7 +430,7 @@ def main():
                         nargs='?',
                         const='PROMPT',
                         default=None,
-                        help='Password')
+                        help='Password (if USERNAME is specified but not PASSWORD, will prompt for password)')
     parser.add_argument('--ssl',
                         dest='use_ssl',
                         default=False,
@@ -449,7 +449,7 @@ def main():
                         default=DEFAULT_THREAD_POOLS,
                         metavar='THREADPOOL',
                         nargs='+',
-                        help='Thread pools to show')
+                        help='Threadpools to show')
     parser.add_argument('-C',
                         '--no-color',
                         dest='no_color',
