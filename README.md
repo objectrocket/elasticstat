@@ -1,7 +1,6 @@
 # Elasticstat
 
-Written By: Jeff Tharp, ObjectRocket by Rackspace
-http://objectrocket.com/elasticsearch
+Written By: Jeff Tharp, http://objectrocket.com/elasticsearch
 
 ## Description
 Elasticstat is a utility for real-time performance monitoring of an Elasticsearch cluster from the command line,
