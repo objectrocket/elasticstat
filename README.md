@@ -21,7 +21,7 @@ metric.
 
 ## Install
 
-Install `elasticstat` via pip:
+Install `elasticstat` via [pip](https://pypi.python.org/pypi/elasticstat):
 
 ```
 pip install elasticstat
