@@ -1,0 +1,200 @@
+elasticstat(1) - Real-time performance monitoring of an Elasticsearch cluster
+=============================================================================
+
+## SYNOPSIS
+
+`elasticstat` [`-h` _host-list_] [`--port` _http-port_] [`-u` _username_] [`-p` [_password_]]
+              [`--ssl`] [`-c` _category_ [_category_ ...]]
+              [`-t` _threadpool_ [_threadpool_ ...]] [`-C`]
+              [_delay-interval_]
+
+## DESCRIPTION
+
+**Elasticstat** is a utility for real-time performance monitoring of an Elasticsearch cluster from the command line,
+much like how the Unix utilities iostat or vmstat work. The frequency of updates can be controlled via the `DELAYINTERVAL`
+ optional parameter, which specifies a delay in seconds after each update.
+
+## OPTIONS
+
+These options control how to connect to Elasticsearch and the type of information to output.
+
+  * `-h`, `--host`:
+    Hostname or address of a host in an Elasticsearch cluster, or a comma-delimited list of hosts. All hosts provided must be members of the same cluster.
+
+    The port of can also be appended to the hostname or hostnames in the form `HOSTNAME:PORT`.
+
+  * `--port`:
+    HTTP(S) port of the Elasticsearch node. Alternatively, the port can be included in the host list with `-h`.
+
+  * `-u`, `--username`:
+    Username for authenticating to Elasticsearch (HTTP Authentication)
+
+  * `-p`, `--password`:
+    Password to use when authenticating to Elasticsearch. If a username is supplied with `--username` and this option is not set, the user will be prompted for the password.
+
+  * `--ssl`:
+    Connect using TLS/SSL
+
+  * `-c`:
+    Metric categories to show. One of: _os_, _jvm_, _threads_, _fielddata_, _connections_, _data_nodes_. See [NODE METRICS][] for more information.
+
+  * `-t`, `--threadpool`:
+    Threadpools to show. One of: _index_, _search_, _bulk_, _get_, _merge_. See [THREADS][] for more information.
+
+  * `-C`, `--no-color`:
+    Display without ANSI color output
+
+## CLUSTER METRICS
+
+These metrics are displayed at the top of each output cycle. They provide basic information about the health of the cluster.
+
+  * cluster:
+    The name of the cluster.
+
+  * status:
+    The familiar green/yellow/red status of the cluster. Green is good, yellow indicates at least one replica shard is unavailable, red indicates at least one primary shard is unavailable.
+
+  * shards:
+    Total number of active primary and replica shards across all indices.
+
+  * pri:
+    The number of active/allocated primary shards across all indices.
+
+  * relo:
+    Number of shards currently relocating from one data node to another.
+
+  * init:
+    Number of shards being freshly created.
+
+  * unassign:
+    Number of shards defined in an index but not allocated to a data node.
+
+  * pending tasks:
+    The number of tasks pending (see [Pending Tasks](https://www.elastic.co/guide/en/elasticsearch/guide/current/_pending_tasks.html)).
+
+  * time:
+    Current local time for this update.
+
+## NODE METRICS
+
+These metrics are displayed for each node in the cluster.
+
+### GENERAL
+
+  * node:
+    The node name; typically a shortened version of the hostname of the node.
+
+  * role:
+    The role this node serves in the cluster.
+
+    _ALL_ A node serving as both a master and a data node (node.master = true, node.data = true).
+
+    _DATA_ A data-only node (node.master = false, node.data = true). 
+
+    _MST_ A master-only node (node.master = true, node.data = false).
+
+    _RTR_ A client node (node.master = false, node.data = false).
+
+    _UNK_ A node with an unknown or undetermined role.
+  
+### OS METRICS
+
+  * load:
+    The 1min/5min/15min load average of the node.
+
+  * mem:
+    Percentage of total memory used on the node, including memory used by the kernel and other processes besides Elasticsearch.
+
+### JVM
+
+  * heap:
+    Percentage of Java heap memory in use.  Java garbage collections occur when this reaches or exceeds 75%.
+  * old sz:
+    Total size of the memory pool for the old generation portion of the Java heap.
+  * old gc:
+    Number of garbage collection events that have occured, and their cumulative time since the last update, for the old generation region of Java heap.
+  * young gc:
+    Number of garbage collection events that have occured, and their cumulative time since the last update, for the young (aka eden) generation region of Java heap.
+
+### THREADS
+
+The number of active/queued/rejected threads for each threadpool.
+
+Default threadpools listed are as follows:
+
+  * index:
+    Indexing requests (not including bulk requests).
+  * search:
+    All search and query requests.
+  * bulk:
+    Bulk requests.
+  * get:
+    All get-by-ID operations.
+  * merge:
+    Threadpool for managing Lucene merges.
+
+### FIELD DATA
+
+  * fde:
+    Count of field data evictions that have occurred since last update.
+  * fdt:
+    Number of times the field data circuit breaker has tripped since the last update.
+
+### CONNECTIONS
+
+  * hconn:
+    Number of active HTTP/HTTPS connections to this node via REST API.
+  * tconn:
+    Number of active transport connections to this node using the Java API. This number includes intra-cluster node-to-node connections.
+
+### DATA NODES
+
+  * merges:
+    Total time spent in Lucene segment merges since the last time the node was restarted.
+  * idx st:
+    This is the "index store throttle": the total time indexing has been throttled to a single thread since the last time the node was restarted.
+  * docs:
+    The total number of documents in all index shards allocated to this node.  If there is a second number, this is the total number of deleted documents not yet merged.
+
+## EXAMPLES
+
+Connecting to Elasticsearch on the default HTTP port (9200):
+
+`elasticstat -h es.example.com`
+
+Update every 10 seconds:
+
+`elasticstat -h es.example.com 10`
+
+Non-standard HTTP port:
+
+`elasticstat -h es.example.com --port 10000`
+`elasticstat -h es.example.com:10000`
+
+Multiple hosts, default port:
+
+`elasticstat -h es1.example.com,es2.example.com,es3.example.com`
+
+With HTTP authentication and SSL:
+
+`elasticstat -h es.example.com -u youruser -p yourpass --ssl`
+
+Only show JVM metrics:
+
+`elasticstat -h es.example.com -c jvm`
+
+## LICENSE
+
+Copyright 2015 Rackspace US, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

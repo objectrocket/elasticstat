@@ -1,0 +1,261 @@
+.\" generated with Ronn/v0.7.3
+.\" http://github.com/rtomayko/ronn/tree/0.7.3
+.
+.TH "ELASTICSTAT" "1" "September 2015" "" ""
+.
+.SH "NAME"
+\fBelasticstat\fR \- Real\-time performance monitoring of an Elasticsearch cluster
+.
+.SH "SYNOPSIS"
+\fBelasticstat\fR [\fB\-h\fR \fIhost\-list\fR] [\fB\-\-port\fR \fIhttp\-port\fR] [\fB\-u\fR \fIusername\fR] [\fB\-p\fR [\fIpassword\fR]] [\fB\-\-ssl\fR] [\fB\-c\fR \fIcategory\fR [\fIcategory\fR \.\.\.]] [\fB\-t\fR \fIthreadpool\fR [\fIthreadpool\fR \.\.\.]] [\fB\-C\fR] [\fIdelay\-interval\fR]
+.
+.SH "DESCRIPTION"
+\fBElasticstat\fR is a utility for real\-time performance monitoring of an Elasticsearch cluster from the command line, much like how the Unix utilities iostat or vmstat work\. The frequency of updates can be controlled via the \fBDELAYINTERVAL\fR optional parameter, which specifies a delay in seconds after each update\.
+.
+.SH "OPTIONS"
+These options control how to connect to Elasticsearch and the type of information to output\.
+.
+.TP
+\fB\-h\fR, \fB\-\-host\fR
+Hostname or address of a host in an Elasticsearch cluster, or a comma\-delimited list of hosts\. All hosts provided must be members of the same cluster\.
+.
+.IP
+The port of can also be appended to the hostname or hostnames in the form \fBHOSTNAME:PORT\fR\.
+.
+.TP
+\fB\-\-port\fR
+HTTP(S) port of the Elasticsearch node\. Alternatively, the port can be included in the host list with \fB\-h\fR\.
+.
+.TP
+\fB\-u\fR, \fB\-\-username\fR
+Username for authenticating to Elasticsearch (HTTP Authentication)
+.
+.TP
+\fB\-p\fR, \fB\-\-password\fR
+Password to use when authenticating to Elasticsearch\. If a username is supplied with \fB\-\-username\fR and this option is not set, the user will be prompted for the password\.
+.
+.TP
+\fB\-\-ssl\fR
+Connect using TLS/SSL
+.
+.TP
+\fB\-c\fR
+Metric categories to show\. One of: \fIos\fR, \fIjvm\fR, \fIthreads\fR, \fIfielddata\fR, \fIconnections\fR, \fIdata_nodes\fR\. See \fINODE METRICS\fR for more information\.
+.
+.TP
+\fB\-t\fR, \fB\-\-threadpool\fR
+Threadpools to show\. One of: \fIindex\fR, \fIsearch\fR, \fIbulk\fR, \fIget\fR, \fImerge\fR\. See \fITHREADS\fR for more information\.
+.
+.TP
+\fB\-C\fR, \fB\-\-no\-color\fR
+Display without ANSI color output
+.
+.SH "CLUSTER METRICS"
+These metrics are displayed at the top of each output cycle\. They provide basic information about the health of the cluster\.
+.
+.TP
+cluster
+The name of the cluster\.
+.
+.TP
+status
+The familiar green/yellow/red status of the cluster\. Green is good, yellow indicates at least one replica shard is unavailable, red indicates at least one primary shard is unavailable\.
+.
+.TP
+shards
+Total number of active primary and replica shards across all indices\.
+.
+.TP
+pri
+The number of active/allocated primary shards across all indices\.
+.
+.TP
+relo
+Number of shards currently relocating from one data node to another\.
+.
+.TP
+init
+Number of shards being freshly created\.
+.
+.TP
+unassign
+Number of shards defined in an index but not allocated to a data node\.
+.
+.TP
+pending tasks
+The number of tasks pending (see Pending Tasks \fIhttps://www\.elastic\.co/guide/en/elasticsearch/guide/current/_pending_tasks\.html\fR)\.
+.
+.TP
+time
+Current local time for this update\.
+.
+.SH "NODE METRICS"
+These metrics are displayed for each node in the cluster\.
+.
+.SS "GENERAL"
+.
+.TP
+node
+The node name; typically a shortened version of the hostname of the node\.
+.
+.TP
+role
+The role this node serves in the cluster\.
+.
+.IP
+\fIALL\fR A node serving as both a master and a data node (node\.master = true, node\.data = true)\.
+.
+.IP
+\fIDATA\fR A data\-only node (node\.master = false, node\.data = true)\.
+.
+.IP
+\fIMST\fR A master\-only node (node\.master = true, node\.data = false)\.
+.
+.IP
+\fIRTR\fR A client node (node\.master = false, node\.data = false)\.
+.
+.IP
+\fIUNK\fR A node with an unknown or undetermined role\.
+.
+.SS "OS METRICS"
+.
+.TP
+load
+The 1min/5min/15min load average of the node\.
+.
+.TP
+mem
+Percentage of total memory used on the node, including memory used by the kernel and other processes besides Elasticsearch\.
+.
+.SS "JVM"
+.
+.TP
+heap
+Percentage of Java heap memory in use\. Java garbage collections occur when this reaches or exceeds 75%\.
+.
+.TP
+old sz
+Total size of the memory pool for the old generation portion of the Java heap\.
+.
+.TP
+old gc
+Number of garbage collection events that have occured, and their cumulative time since the last update, for the old generation region of Java heap\.
+.
+.TP
+young gc
+Number of garbage collection events that have occured, and their cumulative time since the last update, for the young (aka eden) generation region of Java heap\.
+.
+.SS "THREADS"
+The number of active/queued/rejected threads for each threadpool\.
+.
+.P
+Default threadpools listed are as follows:
+.
+.TP
+index
+Indexing requests (not including bulk requests)\.
+.
+.TP
+search
+All search and query requests\.
+.
+.TP
+bulk
+Bulk requests\.
+.
+.TP
+get
+All get\-by\-ID operations\.
+.
+.TP
+merge
+Threadpool for managing Lucene merges\.
+.
+.SS "FIELD DATA"
+.
+.TP
+fde
+Count of field data evictions that have occurred since last update\.
+.
+.TP
+fdt
+Number of times the field data circuit breaker has tripped since the last update\.
+.
+.SS "CONNECTIONS"
+.
+.TP
+hconn
+Number of active HTTP/HTTPS connections to this node via REST API\.
+.
+.TP
+tconn
+Number of active transport connections to this node using the Java API\. This number includes intra\-cluster node\-to\-node connections\.
+.
+.SS "DATA NODES"
+.
+.TP
+merges
+Total time spent in Lucene segment merges since the last time the node was restarted\.
+.
+.TP
+idx st
+This is the "index store throttle": the total time indexing has been throttled to a single thread since the last time the node was restarted\.
+.
+.TP
+docs
+The total number of documents in all index shards allocated to this node\. If there is a second number, this is the total number of deleted documents not yet merged\.
+.
+.SH "EXAMPLES"
+Connecting to Elasticsearch on the default HTTP port (9200):
+.
+.P
+\fBelasticstat \-h es\.example\.com\fR
+.
+.P
+Update every 10 seconds:
+.
+.P
+\fBelasticstat \-h es\.example\.com 10\fR
+.
+.P
+Non\-standard HTTP port:
+.
+.P
+\fBelasticstat \-h es\.example\.com \-\-port 10000\fR \fBelasticstat \-h es\.example\.com:10000\fR
+.
+.P
+Multiple hosts, default port:
+.
+.P
+\fBelasticstat \-h es1\.example\.com,es2\.example\.com,es3\.example\.com\fR
+.
+.P
+With HTTP authentication and SSL:
+.
+.P
+\fBelasticstat \-h es\.example\.com \-u youruser \-p yourpass \-\-ssl\fR
+.
+.P
+Only show JVM metrics:
+.
+.P
+\fBelasticstat \-h es\.example\.com \-c jvm\fR
+.
+.SH "LICENSE"
+Copyright 2015 Rackspace US, Inc\.
+.
+.P
+Licensed under the Apache License, Version 2\.0 (the "License"); you may not use this file except in compliance with the License\. You may obtain a copy of the License at
+.
+.IP "" 4
+.
+.nf
+
+http://www\.apache\.org/licenses/LICENSE\-2\.0
+.
+.fi
+.
+.IP "" 0
+.
+.P
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied\. See the License for the specific language governing permissions and limitations under the License\.
