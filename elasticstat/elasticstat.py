@@ -61,7 +61,7 @@ NODE_HEADINGS["transport_conn"] = "tconn"
 NODE_HEADINGS["merge_time"] = "merges"
 NODE_HEADINGS["store_throttle"] = "idx st"
 NODE_HEADINGS["docs"] = "docs"
-DEFAULT_THREAD_POOLS = ["index", "search", "bulk", "get", "merge"]
+DEFAULT_THREAD_POOLS = ["index", "search", "bulk", "get"]
 CATEGORIES = ['general', 'os', 'jvm', 'threads', 'fielddata', 'connections', 'data_nodes']
 
 class ESArgParser(argparse.ArgumentParser):
