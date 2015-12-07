@@ -249,9 +249,15 @@ class Elasticstat:
         return(NODES_TEMPLATE['general'].format(name=node_name, role=node_role))
         
     def process_node_os(self, role, node_id, node):
-        return(NODES_TEMPLATE['os'].format(load_avg="/".join(str(x) for x in node['os']['load_average']),
+        node_load_avg = node['os']['load_average']
+        if isinstance(node_load_avg, list):
+            node_load_avg="/".join(str(x) for x in node_load_avg)
+        else:
+            # Elasticsearch 2.x+ only return 1 load average, not the standard 5/10/15 min avgs
+            node_load_avg = str(node_load_avg)
+        return(NODES_TEMPLATE['os'].format(load_avg=node_load_avg,
                                            used_mem="{0}%".format(node['os']['mem']['used_percent'])))
-    
+
     def process_node_jvm(self, role, node_id, node):
         processed_node_jvm = {}
         processed_node_jvm['used_heap'] = "{0}%".format(node['jvm']['mem']['heap_used_percent'])
