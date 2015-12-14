@@ -82,7 +82,7 @@ optional arguments:
     - RTR: a client node, node.master = false, node.data = false
     - UNK: node with an unkown or undetermined role
 - os
-  - load: the 1 minute / 5 minute / 15 minute [load average](http://blog.scoutapp.com/articles/2009/07/31/understanding-load-averages) of the node
+  - load: the 1 minute / 5 minute / 15 minute [load average](http://blog.scoutapp.com/articles/2009/07/31/understanding-load-averages) of the node (only 1 minute load average for Elasticsearch 2.x+)
   - mem: percentage of total memory used on the node (including memory used by the kernel and other processes besides Elasticsearch)
 - [jvm](https://www.elastic.co/guide/en/elasticsearch/guide/current/_monitoring_individual_nodes.html#_jvm_section)
   - heap: percentage of Java heap memory in use.  Java garbage collections occur when this reaches or exceeds 75%.
@@ -94,7 +94,6 @@ optional arguments:
   - search: all search and query requests
   - bulk: bulk requests
   - get: all get-by-ID operations
-  - merge: threadpool for managing Lucene merges
 - [fielddata](https://www.elastic.co/guide/en/elasticsearch/guide/current/_limiting_memory_usage.html#fielddata-size)
   - fde: count of field data evictions that have occurred since last update
   - fdt: number of times the field data circuit breaker has tripped since the last update
@@ -104,6 +103,7 @@ optional arguments:
 - data_nodes: metrics useful only for data-bearing nodes
   - merges: total time spent in Lucene segment merges since the last time the node was restarted
   - idx st: [index store throttle](https://www.elastic.co/guide/en/elasticsearch/reference/current/index-modules-store.html#store-throttling), the total time indexing has been throttled to a single thread since the last time the node was restarted (see [Segments and Merging](https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html#segments-and-merging))
+  - disk usage: the total space used and percentage of space used for storing Elasticsearch data files
   - docs: the total number of documents in all index shards allocated to this node.  If there is a second number, this is the total number of deleted documents not yet merged
 
 ## License
