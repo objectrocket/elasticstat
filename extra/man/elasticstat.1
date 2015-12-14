@@ -1,7 +1,7 @@
 .\" generated with Ronn/v0.7.3
 .\" http://github.com/rtomayko/ronn/tree/0.7.3
 .
-.TH "ELASTICSTAT" "1" "September 2015" "" ""
+.TH "ELASTICSTAT" "1" "December 2015" "" ""
 .
 .SH "NAME"
 \fBelasticstat\fR \- Real\-time performance monitoring of an Elasticsearch cluster
@@ -121,7 +121,7 @@ The role this node serves in the cluster\.
 .
 .TP
 load
-The 1min/5min/15min load average of the node\.
+The 1min/5min/15min load average of the node\. (Only 1 minute load average for Elasticsearch 2\.x+)
 .
 .TP
 mem
@@ -167,10 +167,6 @@ Bulk requests\.
 get
 All get\-by\-ID operations\.
 .
-.TP
-merge
-Threadpool for managing Lucene merges\.
-.
 .SS "FIELD DATA"
 .
 .TP
@@ -200,6 +196,10 @@ Total time spent in Lucene segment merges since the last time the node was resta
 .TP
 idx st
 This is the "index store throttle": the total time indexing has been throttled to a single thread since the last time the node was restarted\.
+.
+.TP
+disk usage
+The total space used and percentage of space used for storing Elasticsearch data files\.
 .
 .TP
 docs

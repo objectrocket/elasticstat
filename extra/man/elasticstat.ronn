@@ -100,7 +100,7 @@ These metrics are displayed for each node in the cluster.
 ### OS METRICS
 
   * load:
-    The 1min/5min/15min load average of the node.
+    The 1min/5min/15min load average of the node.  (Only 1 minute load average for Elasticsearch 2.x+)
 
   * mem:
     Percentage of total memory used on the node, including memory used by the kernel and other processes besides Elasticsearch.
@@ -130,8 +130,6 @@ Default threadpools listed are as follows:
     Bulk requests.
   * get:
     All get-by-ID operations.
-  * merge:
-    Threadpool for managing Lucene merges.
 
 ### FIELD DATA
 
@@ -153,6 +151,8 @@ Default threadpools listed are as follows:
     Total time spent in Lucene segment merges since the last time the node was restarted.
   * idx st:
     This is the "index store throttle": the total time indexing has been throttled to a single thread since the last time the node was restarted.
+  * disk usage:
+    The total space used and percentage of space used for storing Elasticsearch data files.
   * docs:
     The total number of documents in all index shards allocated to this node.  If there is a second number, this is the total number of deleted documents not yet merged.
 
