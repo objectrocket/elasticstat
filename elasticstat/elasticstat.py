@@ -44,7 +44,7 @@ NODES_TEMPLATE['jvm'] = """{used_heap:>4}  {old_gc_sz:8} {old_gc:8} {young_gc:8}
 NODES_TEMPLATE['threads'] = """{threads:<8}"""
 NODES_TEMPLATE['fielddata'] = """{fielddata:^7}"""
 NODES_TEMPLATE['connections'] = """{http_conn:>6} {transport_conn:>6}"""
-NODES_TEMPLATE['data_nodes'] = """{merge_time:>8} {store_throttle:>8}  {docs}"""
+NODES_TEMPLATE['data_nodes'] = """{merge_time:>8} {store_throttle:>8} {fs:>16}  {docs}"""
 NODES_FAILED_TEMPLATE = """{name:24} {role:<6}       (No data received, node may have left cluster)"""
 NODE_HEADINGS = {}
 NODE_HEADINGS["name"] = "nodes"
@@ -61,6 +61,7 @@ NODE_HEADINGS["transport_conn"] = "tconn"
 NODE_HEADINGS["merge_time"] = "merges"
 NODE_HEADINGS["store_throttle"] = "idx st"
 NODE_HEADINGS["docs"] = "docs"
+NODE_HEADINGS["fs"] = "disk usage"
 DEFAULT_THREAD_POOLS = ["index", "search", "bulk", "get"]
 CATEGORIES = ['general', 'os', 'jvm', 'threads', 'fielddata', 'connections', 'data_nodes']
 
@@ -161,7 +162,28 @@ class Elasticstat:
         
     def thetime(self):
         return datetime.datetime.now().strftime("%H:%M:%S")
-    
+
+    def size_human(self, size):
+        for unit in ['B','KB','MB','GB','TB','PB','EB','ZB']:
+            if abs(size) < 1024.0:
+                return "{:6.2f} {}".format(size, unit)
+            size /= 1024.0
+        return "{:6.2f} {}".format(size, 'YB')
+
+    def get_disk_usage(self, node_fs_stats):
+        # Calculate used disk space
+        if node_fs_stats["total"] == {}:
+            # Not a data node
+            return "-"
+        
+        total_in_bytes = node_fs_stats["total"]["total_in_bytes"]
+        used_in_bytes = total_in_bytes - node_fs_stats["total"]["available_in_bytes"]
+        
+        used_percent = int((float(used_in_bytes) / float(total_in_bytes)) * 100)
+        used_human = self.size_human(used_in_bytes)
+        
+        return "{}|{}%".format(used_human, used_percent)
+        
     def get_role(self, attributes):
         # This is dumb, but if data/master is true, ES doesn't include the key in 
         # the attributes subdoc.  Why?? :-P
@@ -224,7 +246,7 @@ class Elasticstat:
             fdt_delta = current_tripped - self.node_counters['fd'][node_id]['fdt']
             self.node_counters['fd'][node_id]['fdt'] = current_tripped
             return("{0}|{1}".format(fde_delta, fdt_delta))
-        
+
     def get_http_conns(self, node_id, http_conns):
         # check if this is a new node
         if node_id not in self.node_counters['hconn']:
@@ -303,10 +325,12 @@ class Elasticstat:
                 processed_node_dn['docs'] = "{0}|{1}".format(doc_count, deleted_count)
             else:
                 processed_node_dn['docs'] = str(doc_count)
+            processed_node_dn['fs'] = self.get_disk_usage(node['fs'])
         else:
             processed_node_dn['merge_time'] = "-"
             processed_node_dn['store_throttle'] = "-"
             processed_node_dn['docs'] = "-"
+            processed_node_dn['fs'] = "-"
         return(NODES_TEMPLATE['data_nodes'].format(**processed_node_dn))        
                
     def process_node(self, role, node_id, node):
