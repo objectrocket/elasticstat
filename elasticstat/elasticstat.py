@@ -25,7 +25,11 @@ import time
 from elasticsearch import Elasticsearch
 from urllib3.util import parse_url
 
-CLUSTER_TEMPLATE = """{cluster_name:33} {status:6}   {active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8}   {number_of_pending_tasks:>13}   {timestamp:8}"""
+CLUSTER_TEMPLATE = {}
+CLUSTER_TEMPLATE['general'] = """{cluster_name:33} {status:6}"""
+CLUSTER_TEMPLATE['shards'] = """{active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8}"""
+CLUSTER_TEMPLATE['tasks'] = """{number_of_pending_tasks:>13}"""
+CLUSTER_TEMPLATE['time'] = """{timestamp:8}"""
 CLUSTER_HEADINGS = {}
 CLUSTER_HEADINGS["cluster_name"] = "cluster"
 CLUSTER_HEADINGS["status"] = "status"
@@ -36,6 +40,7 @@ CLUSTER_HEADINGS["initializing_shards"] = "init"
 CLUSTER_HEADINGS["unassigned_shards"] = "unassign"
 CLUSTER_HEADINGS["number_of_pending_tasks"] = "pending tasks"
 CLUSTER_HEADINGS["timestamp"] = "time"
+CLUSTER_CATEGORIES = ['general', 'shards', 'tasks', 'time']
 
 NODES_TEMPLATE = {}
 NODES_TEMPLATE['general'] = """{name:24} {role:<6}"""
@@ -85,8 +90,8 @@ class Elasticstat:
 
     STATUS_COLOR = {'red': ESColors.RED, 'green': ESColors.GREEN, 'yellow': ESColors.YELLOW}
 
-    def __init__(self, host, port, username, password, use_ssl, delay_interval, categories, threadpools, no_color):
-        self.sleep_interval = delay_interval
+    def __init__(self, args):
+        self.sleep_interval = args.delay_interval
         self.node_counters = {}
         self.node_counters['gc'] = {}
         self.node_counters['fd'] = {}
@@ -96,12 +101,17 @@ class Elasticstat:
         self.node_names = {} # node names, organized by id
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
-        self.no_color = no_color
-        self.threadpools = self._parse_threadpools(threadpools)
-        self.categories = self._parse_categories(categories)
+        self.no_color = args.no_color
+        self.threadpools = self._parse_threadpools(args.threadpools)
+        self.categories = self._parse_categories(args.categories)
+        self.cluster_categories = CLUSTER_CATEGORIES
+        if args.no_pending_tasks:
+            # Elasticsearch pre v.1.5 does not include number of pending tasks in cluster health
+            self.cluster_categories.remove('tasks')
 
         # Create Elasticsearch client
-        self.es_client = Elasticsearch(self._parse_connection_properties(host, port, username, password, use_ssl))
+        self.es_client = Elasticsearch(self._parse_connection_properties(args.hostlist, args.port, args.username,
+                                                                         args.password, args.use_ssl))
 
     def _parse_connection_properties(self, host, port, username, password, use_ssl):
         hosts_list = []
@@ -379,10 +389,13 @@ class Elasticstat:
 
     def format_headings(self):
         """Format both cluster and node headings once and then store for later output"""
+        cluster_heading_segments = []
         node_heading_segments = []
 
         # cluster headings
-        self.cluster_headings = CLUSTER_TEMPLATE.format(**CLUSTER_HEADINGS)
+        for category in self.cluster_categories:
+            cluster_heading_segments.append(CLUSTER_TEMPLATE[category].format(**CLUSTER_HEADINGS))
+        self.cluster_headings = "   ".join(cluster_heading_segments)
 
         # node headings
         for category in self.categories:
@@ -395,6 +408,7 @@ class Elasticstat:
     def print_stats(self):
         # just run forever until ctrl-c
         while True:
+            cluster_segments = []
             cluster_health = self.es_client.cluster.health()
             nodes_stats = self.es_client.nodes.stats(human=True)
             self.active_master = self.es_client.cat.master(h="id").strip() # needed to remove trailing newline
@@ -402,9 +416,11 @@ class Elasticstat:
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
             status = cluster_health['status']
+            for category in self.cluster_categories:
+                cluster_segments.append(CLUSTER_TEMPLATE[category].format(**cluster_health))
+                cluster_health_formatted = "   ".join(cluster_segments)
             print self.colorize(self.cluster_headings, ESColors.GRAY)
-            print self.colorize(CLUSTER_TEMPLATE.format(**cluster_health), self.STATUS_COLOR[status])
-            #print "" # space for readability
+            print self.colorize(cluster_health_formatted, self.STATUS_COLOR[status])
 
             # Nodes can join and leave cluster with each iteration -- in order to report on nodes
             # that have left the cluster, maintain a list grouped by role.
@@ -486,6 +502,10 @@ def main():
                         action='store_true',
                         default=False,
                         help='Display without ANSI color output')
+    parser.add_argument('--no-pending-tasks',
+                        dest='no_pending_tasks',
+                        default=False,
+                        help='Disable display of pending tasks in cluster health (use for Elasticsearch <v1.5)')
     parser.add_argument('delay_interval',
                         default='1',
                         nargs='?',
@@ -496,7 +516,7 @@ def main():
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit())
-    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.use_ssl, args.delay_interval, args.categories, args.threadpools, args.no_color)
+    elasticstat = Elasticstat(args)
     elasticstat.format_headings()
     elasticstat.print_stats()
 
