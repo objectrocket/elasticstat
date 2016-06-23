@@ -194,29 +194,53 @@ class Elasticstat:
 
         return "{}|{}%".format(used_human, used_percent)
 
-    def get_role(self, attributes):
+    def get_role(self, attributes=None, roles=None):
         # This is dumb, but if data/master is true, ES doesn't include the key in
         # the attributes subdoc.  Why?? :-P
         ismaster = 'true'
         isdata = 'true'
+        isingest = 'true'
 
-        if 'data' in attributes:
-            isdata = attributes['data']
-        if 'master' in attributes:
-            ismaster = attributes['master']
+        if attributes is not None:
+            # pre-2.3 roles
+            isingest = 'false'
+            if 'data' in attributes:
+                isdata = attributes['data']
+            if 'master' in attributes:
+                ismaster = attributes['master']
+
+        if roles is not None:
+            if 'master' in roles:
+                ismaster = 'true'
+            if 'data' in roles:
+                ismaster = 'true'
+            if 'ingest' in roles:
+                isingest = 'true'
 
         if ismaster == 'true' and isdata == 'true':
-            # if is both master and data node, client is assumed as well
-            return "ALL"
+            # if is both master/data node, client is assumed as well
+            if roles is not None and isingest == 'false':
+                return "M/D"
+            else:
+                return "ALL"
         elif ismaster == 'true' and isdata == 'false':
             # master node
-            return "MST"
+            if roles is not None and isingest == 'true':
+                return "M/I"
+            else:
+                return "MST"
         elif ismaster == 'false' and isdata == 'true':
             # data-only node
-            return "DATA"
+            if roles is not None and isingest == 'true':
+                return "D/I"
+            else:
+                return "DATA"
         elif ismaster == 'false' and isdata == 'false':
-            # client node (using RTR like monogostat)
-            return "RTR"
+            if roles is not None and isingest == 'true':
+                return "ING"
+            else:
+                # client node (using RTR like monogostat)
+                return "RTR"
         else:
             # uh, wat? no idea if we reach here
             return "UNK"
@@ -281,14 +305,28 @@ class Elasticstat:
         return(NODES_TEMPLATE['general'].format(name=node_name, role=node_role))
 
     def process_node_os(self, role, node_id, node):
-        node_load_avg = node['os']['load_average']
-        if isinstance(node_load_avg, list):
-            node_load_avg="/".join(str(x) for x in node_load_avg)
+        if 'cpu' in node['os'] and 'load_average' in node['os']['cpu']:
+            # Elasticsearch 5.x+ move load average to cpu key
+            node_load_avgs = []
+            for load_avg in node['os']['cpu']['load_average'].values():
+                node_load_avgs.append(load_avg)
+            node_load_avg = "/".join("{0:.2f}".format(x) for x in node_load_avgs)
         else:
-            # Elasticsearch 2.x+ only return 1 load average, not the standard 5/10/15 min avgs
-            node_load_avg = str(node_load_avg)
-        return(NODES_TEMPLATE['os'].format(load_avg=node_load_avg,
-                                           used_mem="{0}%".format(node['os']['mem']['used_percent'])))
+            # Pre Elasticsearch 5.x
+            node_load_avg = node['os'].get('load_average')
+            if isinstance(node_load_avg, list):
+                node_load_avg="/".join(str(x) for x in node_load_avg)
+            elif isinstance(node_load_avg, float):
+                # Elasticsearch 2.0-2.3 only return 1 load average, not the standard 5/10/15 min avgs
+                node_load_avg = "{0:.2f}".format(node_load_avg)
+            else:
+                node_load_avg = 'N/A'
+
+        if 'mem' in node['os']:
+            node_used_mem = "{0}%".format(node['os']['mem']['used_percent'])
+        else:
+            node_used_mem = "N/A"
+        return(NODES_TEMPLATE['os'].format(load_avg=node_load_avg, used_mem=node_used_mem))
 
     def process_node_jvm(self, role, node_id, node):
         processed_node_jvm = {}
@@ -370,7 +408,8 @@ class Elasticstat:
                     print self.colorize(NODES_FAILED_TEMPLATE.format(**failed_node), ESColors.GRAY)
                 continue
             # make sure node's role hasn't changed
-            current_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+            current_role = self.get_role(nodes_stats['nodes'][node_id].get('attributes'),
+                                         nodes_stats['nodes'][node_id].get('roles'))
             if current_role != role:
                 # Role changed, update lists so output will be correct on next iteration
                 self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
@@ -430,7 +469,8 @@ class Elasticstat:
                 for node_id in nodes_stats['nodes']:
                     self.nodes_list.append(node_id)
                     self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
-                    node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+                    node_role = self.get_role(nodes_stats['nodes'][node_id].get('attributes'),
+                                              nodes_stats['nodes'][node_id].get('roles'))
                     self.nodes_by_role.setdefault(node_role, []).append(node_id)
             else:
                 # Check for new nodes that have joined the cluster
