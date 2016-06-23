@@ -70,7 +70,7 @@ class ESArgParser(argparse.ArgumentParser):
     def error(self, message):
         self.print_help()
         sys.exit(2)
-        
+
 class ESColors:
     """ANSI escape codes for color output"""
     END = '\033[00m'
@@ -79,12 +79,12 @@ class ESColors:
     YELLOW = '\033[0;33m'
     GRAY = '\033[1;30m'
     WHITE = '\033[1;37m'
-    
+
 class Elasticstat:
     """Elasticstat"""
-    
+
     STATUS_COLOR = {'red': ESColors.RED, 'green': ESColors.GREEN, 'yellow': ESColors.YELLOW}
-    
+
     def __init__(self, host, port, username, password, use_ssl, delay_interval, categories, threadpools, no_color):
         self.sleep_interval = delay_interval
         self.node_counters = {}
@@ -99,41 +99,41 @@ class Elasticstat:
         self.no_color = no_color
         self.threadpools = self._parse_threadpools(threadpools)
         self.categories = self._parse_categories(categories)
-        
+
         # Create Elasticsearch client
         self.es_client = Elasticsearch(self._parse_connection_properties(host, port, username, password, use_ssl))
 
     def _parse_connection_properties(self, host, port, username, password, use_ssl):
         hosts_list = []
-        
+
         if isinstance(host, str):
             # Force to a list, split on ',' if multiple
             host = host.split(',')
-        
+
         for entity in host:
             # Loop over the hosts and parse connection properties
             host_properties = {}
-            
+
             parsed_uri = parse_url(entity)
             host_properties['host'] = parsed_uri.host
             if parsed_uri.port is not None:
                 host_properties['port'] = parsed_uri.port
             else:
                 host_properties['port'] = port
-                
-            if parsed_uri.scheme == 'https' or use_ssl == True:
+
+            if parsed_uri.scheme == 'https' or use_ssl is True:
                 host_properties['use_ssl'] = True
-                
+
             if parsed_uri.auth is not None:
                 host_properties['http_auth'] = parsed_uri.auth
             elif username is not None:
                 if password is None or password == 'PROMPT':
                     password = getpass.getpass()
-                host_properties['http_auth'] = (username, password)                
-                
+                host_properties['http_auth'] = (username, password)
+
             hosts_list.append(host_properties)
         return hosts_list
-                
+
     def _parse_categories(self, categories):
         if isinstance(categories, list):
             if categories[0] == 'all':
@@ -148,18 +148,18 @@ class Elasticstat:
                 msg = "{0} is not valid, please choose categories from {1}".format(category, ', '.join(CATEGORIES[1:]))
                 raise argparse.ArgumentTypeError(msg)
         return ['general'] + categories
-    
+
     def _parse_threadpools(self, threadpools):
         if isinstance(threadpools, list) and ',' in threadpools[0]:
             threadpools = threadpools[0].split(',')
         return threadpools
-    
+
     def colorize(self, msg, color):
-        if self.no_color == True:
+        if self.no_color is True:
             return(msg)
         else:
             return(color + msg + ESColors.END)
-        
+
     def thetime(self):
         return datetime.datetime.now().strftime("%H:%M:%S")
 
@@ -175,26 +175,26 @@ class Elasticstat:
         if node_fs_stats["total"] == {}:
             # Not a data node
             return "-"
-        
+
         total_in_bytes = node_fs_stats["total"]["total_in_bytes"]
         used_in_bytes = total_in_bytes - node_fs_stats["total"]["available_in_bytes"]
-        
+
         used_percent = int((float(used_in_bytes) / float(total_in_bytes)) * 100)
         used_human = self.size_human(used_in_bytes)
-        
+
         return "{}|{}%".format(used_human, used_percent)
-        
+
     def get_role(self, attributes):
-        # This is dumb, but if data/master is true, ES doesn't include the key in 
+        # This is dumb, but if data/master is true, ES doesn't include the key in
         # the attributes subdoc.  Why?? :-P
         ismaster = 'true'
         isdata = 'true'
-        
+
         if 'data' in attributes:
             isdata = attributes['data']
         if 'master' in attributes:
             ismaster = attributes['master']
-            
+
         if ismaster == 'true' and isdata == 'true':
             # if is both master and data node, client is assumed as well
             return "ALL"
@@ -210,7 +210,7 @@ class Elasticstat:
         else:
             # uh, wat? no idea if we reach here
             return "UNK"
-        
+
     def get_gc_stats(self, node_id, node_gc_stats):
         # check if this is a new node
         if node_id not in self.node_counters['gc']:
@@ -230,7 +230,7 @@ class Elasticstat:
             old_gc_results = "{0}|{0}ms".format(old_gc_delta, node_gc_stats['old']['collection_time_in_millis'])
             young_gc_results = "{0}|{0}ms".format(young_gc_delta, node_gc_stats['young']['collection_time_in_millis'])
             return(old_gc_results, young_gc_results)
-    
+
     def get_fd_stats(self, node_id, current_evictions, current_tripped):
         # check if this is a new node
         if node_id not in self.node_counters['fd']:
@@ -269,7 +269,7 @@ class Elasticstat:
         else:
             node_role = role
         return(NODES_TEMPLATE['general'].format(name=node_name, role=node_role))
-        
+
     def process_node_os(self, role, node_id, node):
         node_load_avg = node['os']['load_average']
         if isinstance(node_load_avg, list):
@@ -287,7 +287,6 @@ class Elasticstat:
         node_gc_stats = node['jvm']['gc']['collectors']
         processed_node_jvm['old_gc'], processed_node_jvm['young_gc'] = self.get_gc_stats(node_id, node_gc_stats)
         return(NODES_TEMPLATE['jvm'].format(**processed_node_jvm))
-    
 
     def process_node_threads(self, role, node_id, node):
         thread_segments = []
@@ -300,19 +299,19 @@ class Elasticstat:
             else:
                 thread_segments.append(NODES_TEMPLATE['threads'].format(threads='-|-|-'))
         return(" ".join(thread_segments))
-    
+
     def process_node_fielddata(self, role, node_id, node):
         fielddata = self.get_fd_stats(node_id,
                                       node['indices']['fielddata']['evictions'],
                                       node['breakers']['fielddata']['tripped'])
         return(NODES_TEMPLATE['fielddata'].format(fielddata=fielddata))
-        
+
     def process_node_connections(self, role, node_id, node):
         processed_node_conns = {}
         processed_node_conns['http_conn'] = self.get_http_conns(node_id, node['http'])
         processed_node_conns['transport_conn'] = node['transport']['server_open']
         return(NODES_TEMPLATE['connections'].format(**processed_node_conns))
-    
+
     def process_node_data_nodes(self, role, node_id, node):
         processed_node_dn = {}
         # Data node specific metrics
@@ -331,15 +330,15 @@ class Elasticstat:
             processed_node_dn['store_throttle'] = "-"
             processed_node_dn['docs'] = "-"
             processed_node_dn['fs'] = "-"
-        return(NODES_TEMPLATE['data_nodes'].format(**processed_node_dn))        
-               
+        return(NODES_TEMPLATE['data_nodes'].format(**processed_node_dn))
+
     def process_node(self, role, node_id, node):
         node_segments = []
         for category in self.categories:
             category_func = getattr(self, 'process_node_' + category)
             node_segments.append(category_func(role, node_id, node))
         return("   ".join(node_segments))
-            
+
     def process_role(self, role, nodes_stats):
         procs = []
         for node_id in self.nodes_by_role[role]:
@@ -377,14 +376,14 @@ class Elasticstat:
         for pool in self.threadpools:
             thread_segments.append(NODES_TEMPLATE['threads'].format(threads=pool))
         return(" ".join(thread_segments))
-                    
+
     def format_headings(self):
         """Format both cluster and node headings once and then store for later output"""
         node_heading_segments = []
-        
+
         # cluster headings
         self.cluster_headings = CLUSTER_TEMPLATE.format(**CLUSTER_HEADINGS)
-        
+
         # node headings
         for category in self.categories:
             if category == 'threads':
@@ -392,7 +391,7 @@ class Elasticstat:
             else:
                 node_heading_segments.append(NODES_TEMPLATE[category].format(**NODE_HEADINGS))
         self.node_headings = "   ".join(node_heading_segments)
-        
+
     def print_stats(self):
         # just run forever until ctrl-c
         while True:
@@ -406,7 +405,7 @@ class Elasticstat:
             print self.colorize(self.cluster_headings, ESColors.GRAY)
             print self.colorize(CLUSTER_TEMPLATE.format(**cluster_health), self.STATUS_COLOR[status])
             #print "" # space for readability
-            
+
             # Nodes can join and leave cluster with each iteration -- in order to report on nodes
             # that have left the cluster, maintain a list grouped by role.
             current_nodes_count = len(self.nodes_list)
@@ -427,7 +426,7 @@ class Elasticstat:
                         self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
                         node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
                         self.nodes_by_role.setdefault(node_role, []).append(node_id)
-               
+
             # Print node stats
             print self.colorize(self.node_headings, ESColors.GRAY)
             for role in self.nodes_by_role:
@@ -438,7 +437,8 @@ class Elasticstat:
 
 def main():
     # get command line input
-    parser = ESArgParser(description='Elasticstat is a utility for real-time performance monitoring of an Elasticsearch cluster from the command line', add_help=False)
+    description = 'Elasticstat is a utility for real-time performance monitoring of an Elasticsearch cluster from the command line'
+    parser = ESArgParser(description=description, add_help=False)
 
     parser.add_argument('-h',
                         '--host',
