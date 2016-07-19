@@ -25,7 +25,11 @@ import time
 from elasticsearch import Elasticsearch
 from urllib3.util import parse_url
 
-CLUSTER_TEMPLATE = """{cluster_name:33} {status:6}   {active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8}   {number_of_pending_tasks:>13}   {timestamp:8}"""
+CLUSTER_TEMPLATE = {}
+CLUSTER_TEMPLATE['general'] = """{cluster_name:33} {status:6}"""
+CLUSTER_TEMPLATE['shards'] = """{active_shards:>6} {active_primary_shards:>4} {relocating_shards:>4} {initializing_shards:>4} {unassigned_shards:>8}"""
+CLUSTER_TEMPLATE['tasks'] = """{number_of_pending_tasks:>13}"""
+CLUSTER_TEMPLATE['time'] = """{timestamp:8}"""
 CLUSTER_HEADINGS = {}
 CLUSTER_HEADINGS["cluster_name"] = "cluster"
 CLUSTER_HEADINGS["status"] = "status"
@@ -36,6 +40,7 @@ CLUSTER_HEADINGS["initializing_shards"] = "init"
 CLUSTER_HEADINGS["unassigned_shards"] = "unassign"
 CLUSTER_HEADINGS["number_of_pending_tasks"] = "pending tasks"
 CLUSTER_HEADINGS["timestamp"] = "time"
+CLUSTER_CATEGORIES = ['general', 'shards', 'tasks', 'time']
 
 NODES_TEMPLATE = {}
 NODES_TEMPLATE['general'] = """{name:24} {role:<6}"""
@@ -70,7 +75,7 @@ class ESArgParser(argparse.ArgumentParser):
     def error(self, message):
         self.print_help()
         sys.exit(2)
-        
+
 class ESColors:
     """ANSI escape codes for color output"""
     END = '\033[00m'
@@ -79,14 +84,14 @@ class ESColors:
     YELLOW = '\033[0;33m'
     GRAY = '\033[1;30m'
     WHITE = '\033[1;37m'
-    
+
 class Elasticstat:
     """Elasticstat"""
-    
+
     STATUS_COLOR = {'red': ESColors.RED, 'green': ESColors.GREEN, 'yellow': ESColors.YELLOW}
-    
-    def __init__(self, host, port, username, password, use_ssl, delay_interval, categories, threadpools, no_color):
-        self.sleep_interval = delay_interval
+
+    def __init__(self, args):
+        self.sleep_interval = args.delay_interval
         self.node_counters = {}
         self.node_counters['gc'] = {}
         self.node_counters['fd'] = {}
@@ -96,44 +101,49 @@ class Elasticstat:
         self.node_names = {} # node names, organized by id
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
-        self.no_color = no_color
-        self.threadpools = self._parse_threadpools(threadpools)
-        self.categories = self._parse_categories(categories)
-        
+        self.no_color = args.no_color
+        self.threadpools = self._parse_threadpools(args.threadpools)
+        self.categories = self._parse_categories(args.categories)
+        self.cluster_categories = CLUSTER_CATEGORIES
+        if args.no_pending_tasks:
+            # Elasticsearch pre v.1.5 does not include number of pending tasks in cluster health
+            self.cluster_categories.remove('tasks')
+
         # Create Elasticsearch client
-        self.es_client = Elasticsearch(self._parse_connection_properties(host, port, username, password, use_ssl))
+        self.es_client = Elasticsearch(self._parse_connection_properties(args.hostlist, args.port, args.username,
+                                                                         args.password, args.use_ssl))
 
     def _parse_connection_properties(self, host, port, username, password, use_ssl):
         hosts_list = []
-        
+
         if isinstance(host, str):
             # Force to a list, split on ',' if multiple
             host = host.split(',')
-        
+
         for entity in host:
             # Loop over the hosts and parse connection properties
             host_properties = {}
-            
+
             parsed_uri = parse_url(entity)
             host_properties['host'] = parsed_uri.host
             if parsed_uri.port is not None:
                 host_properties['port'] = parsed_uri.port
             else:
                 host_properties['port'] = port
-                
-            if parsed_uri.scheme == 'https' or use_ssl == True:
+
+            if parsed_uri.scheme == 'https' or use_ssl is True:
                 host_properties['use_ssl'] = True
-                
+
             if parsed_uri.auth is not None:
                 host_properties['http_auth'] = parsed_uri.auth
             elif username is not None:
                 if password is None or password == 'PROMPT':
                     password = getpass.getpass()
-                host_properties['http_auth'] = (username, password)                
-                
+                host_properties['http_auth'] = (username, password)
+
             hosts_list.append(host_properties)
         return hosts_list
-                
+
     def _parse_categories(self, categories):
         if isinstance(categories, list):
             if categories[0] == 'all':
@@ -148,18 +158,18 @@ class Elasticstat:
                 msg = "{0} is not valid, please choose categories from {1}".format(category, ', '.join(CATEGORIES[1:]))
                 raise argparse.ArgumentTypeError(msg)
         return ['general'] + categories
-    
+
     def _parse_threadpools(self, threadpools):
         if isinstance(threadpools, list) and ',' in threadpools[0]:
             threadpools = threadpools[0].split(',')
         return threadpools
-    
+
     def colorize(self, msg, color):
-        if self.no_color == True:
+        if self.no_color is True:
             return(msg)
         else:
             return(color + msg + ESColors.END)
-        
+
     def thetime(self):
         return datetime.datetime.now().strftime("%H:%M:%S")
 
@@ -175,42 +185,66 @@ class Elasticstat:
         if node_fs_stats["total"] == {}:
             # Not a data node
             return "-"
-        
+
         total_in_bytes = node_fs_stats["total"]["total_in_bytes"]
         used_in_bytes = total_in_bytes - node_fs_stats["total"]["available_in_bytes"]
-        
+
         used_percent = int((float(used_in_bytes) / float(total_in_bytes)) * 100)
         used_human = self.size_human(used_in_bytes)
-        
+
         return "{}|{}%".format(used_human, used_percent)
-        
-    def get_role(self, attributes):
-        # This is dumb, but if data/master is true, ES doesn't include the key in 
+
+    def get_role(self, attributes=None, roles=None):
+        # This is dumb, but if data/master is true, ES doesn't include the key in
         # the attributes subdoc.  Why?? :-P
         ismaster = 'true'
         isdata = 'true'
-        
-        if 'data' in attributes:
-            isdata = attributes['data']
-        if 'master' in attributes:
-            ismaster = attributes['master']
-            
+        isingest = 'true'
+
+        if attributes is not None:
+            # pre-2.3 roles
+            isingest = 'false'
+            if 'data' in attributes:
+                isdata = attributes['data']
+            if 'master' in attributes:
+                ismaster = attributes['master']
+
+        if roles is not None:
+            if 'master' in roles:
+                ismaster = 'true'
+            if 'data' in roles:
+                ismaster = 'true'
+            if 'ingest' in roles:
+                isingest = 'true'
+
         if ismaster == 'true' and isdata == 'true':
-            # if is both master and data node, client is assumed as well
-            return "ALL"
+            # if is both master/data node, client is assumed as well
+            if roles is not None and isingest == 'false':
+                return "M/D"
+            else:
+                return "ALL"
         elif ismaster == 'true' and isdata == 'false':
             # master node
-            return "MST"
+            if roles is not None and isingest == 'true':
+                return "M/I"
+            else:
+                return "MST"
         elif ismaster == 'false' and isdata == 'true':
             # data-only node
-            return "DATA"
+            if roles is not None and isingest == 'true':
+                return "D/I"
+            else:
+                return "DATA"
         elif ismaster == 'false' and isdata == 'false':
-            # client node (using RTR like monogostat)
-            return "RTR"
+            if roles is not None and isingest == 'true':
+                return "ING"
+            else:
+                # client node (using RTR like monogostat)
+                return "RTR"
         else:
             # uh, wat? no idea if we reach here
             return "UNK"
-        
+
     def get_gc_stats(self, node_id, node_gc_stats):
         # check if this is a new node
         if node_id not in self.node_counters['gc']:
@@ -230,7 +264,7 @@ class Elasticstat:
             old_gc_results = "{0}|{0}ms".format(old_gc_delta, node_gc_stats['old']['collection_time_in_millis'])
             young_gc_results = "{0}|{0}ms".format(young_gc_delta, node_gc_stats['young']['collection_time_in_millis'])
             return(old_gc_results, young_gc_results)
-    
+
     def get_fd_stats(self, node_id, current_evictions, current_tripped):
         # check if this is a new node
         if node_id not in self.node_counters['fd']:
@@ -269,16 +303,30 @@ class Elasticstat:
         else:
             node_role = role
         return(NODES_TEMPLATE['general'].format(name=node_name, role=node_role))
-        
+
     def process_node_os(self, role, node_id, node):
-        node_load_avg = node['os']['load_average']
-        if isinstance(node_load_avg, list):
-            node_load_avg="/".join(str(x) for x in node_load_avg)
+        if 'cpu' in node['os'] and 'load_average' in node['os']['cpu']:
+            # Elasticsearch 5.x+ move load average to cpu key
+            node_load_avgs = []
+            for load_avg in node['os']['cpu']['load_average'].values():
+                node_load_avgs.append(load_avg)
+            node_load_avg = "/".join("{0:.2f}".format(x) for x in node_load_avgs)
         else:
-            # Elasticsearch 2.x+ only return 1 load average, not the standard 5/10/15 min avgs
-            node_load_avg = str(node_load_avg)
-        return(NODES_TEMPLATE['os'].format(load_avg=node_load_avg,
-                                           used_mem="{0}%".format(node['os']['mem']['used_percent'])))
+            # Pre Elasticsearch 5.x
+            node_load_avg = node['os'].get('load_average')
+            if isinstance(node_load_avg, list):
+                node_load_avg="/".join(str(x) for x in node_load_avg)
+            elif isinstance(node_load_avg, float):
+                # Elasticsearch 2.0-2.3 only return 1 load average, not the standard 5/10/15 min avgs
+                node_load_avg = "{0:.2f}".format(node_load_avg)
+            else:
+                node_load_avg = 'N/A'
+
+        if 'mem' in node['os']:
+            node_used_mem = "{0}%".format(node['os']['mem']['used_percent'])
+        else:
+            node_used_mem = "N/A"
+        return(NODES_TEMPLATE['os'].format(load_avg=node_load_avg, used_mem=node_used_mem))
 
     def process_node_jvm(self, role, node_id, node):
         processed_node_jvm = {}
@@ -287,7 +335,6 @@ class Elasticstat:
         node_gc_stats = node['jvm']['gc']['collectors']
         processed_node_jvm['old_gc'], processed_node_jvm['young_gc'] = self.get_gc_stats(node_id, node_gc_stats)
         return(NODES_TEMPLATE['jvm'].format(**processed_node_jvm))
-    
 
     def process_node_threads(self, role, node_id, node):
         thread_segments = []
@@ -300,19 +347,19 @@ class Elasticstat:
             else:
                 thread_segments.append(NODES_TEMPLATE['threads'].format(threads='-|-|-'))
         return(" ".join(thread_segments))
-    
+
     def process_node_fielddata(self, role, node_id, node):
         fielddata = self.get_fd_stats(node_id,
                                       node['indices']['fielddata']['evictions'],
                                       node['breakers']['fielddata']['tripped'])
         return(NODES_TEMPLATE['fielddata'].format(fielddata=fielddata))
-        
+
     def process_node_connections(self, role, node_id, node):
         processed_node_conns = {}
         processed_node_conns['http_conn'] = self.get_http_conns(node_id, node['http'])
         processed_node_conns['transport_conn'] = node['transport']['server_open']
         return(NODES_TEMPLATE['connections'].format(**processed_node_conns))
-    
+
     def process_node_data_nodes(self, role, node_id, node):
         processed_node_dn = {}
         # Data node specific metrics
@@ -331,15 +378,15 @@ class Elasticstat:
             processed_node_dn['store_throttle'] = "-"
             processed_node_dn['docs'] = "-"
             processed_node_dn['fs'] = "-"
-        return(NODES_TEMPLATE['data_nodes'].format(**processed_node_dn))        
-               
+        return(NODES_TEMPLATE['data_nodes'].format(**processed_node_dn))
+
     def process_node(self, role, node_id, node):
         node_segments = []
         for category in self.categories:
             category_func = getattr(self, 'process_node_' + category)
             node_segments.append(category_func(role, node_id, node))
         return("   ".join(node_segments))
-            
+
     def process_role(self, role, nodes_stats):
         procs = []
         for node_id in self.nodes_by_role[role]:
@@ -361,7 +408,8 @@ class Elasticstat:
                     print self.colorize(NODES_FAILED_TEMPLATE.format(**failed_node), ESColors.GRAY)
                 continue
             # make sure node's role hasn't changed
-            current_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+            current_role = self.get_role(nodes_stats['nodes'][node_id].get('attributes'),
+                                         nodes_stats['nodes'][node_id].get('roles'))
             if current_role != role:
                 # Role changed, update lists so output will be correct on next iteration
                 self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
@@ -377,14 +425,17 @@ class Elasticstat:
         for pool in self.threadpools:
             thread_segments.append(NODES_TEMPLATE['threads'].format(threads=pool))
         return(" ".join(thread_segments))
-                    
+
     def format_headings(self):
         """Format both cluster and node headings once and then store for later output"""
+        cluster_heading_segments = []
         node_heading_segments = []
-        
+
         # cluster headings
-        self.cluster_headings = CLUSTER_TEMPLATE.format(**CLUSTER_HEADINGS)
-        
+        for category in self.cluster_categories:
+            cluster_heading_segments.append(CLUSTER_TEMPLATE[category].format(**CLUSTER_HEADINGS))
+        self.cluster_headings = "   ".join(cluster_heading_segments)
+
         # node headings
         for category in self.categories:
             if category == 'threads':
@@ -392,10 +443,11 @@ class Elasticstat:
             else:
                 node_heading_segments.append(NODES_TEMPLATE[category].format(**NODE_HEADINGS))
         self.node_headings = "   ".join(node_heading_segments)
-        
+
     def print_stats(self):
         # just run forever until ctrl-c
         while True:
+            cluster_segments = []
             cluster_health = self.es_client.cluster.health()
             nodes_stats = self.es_client.nodes.stats(human=True)
             self.active_master = self.es_client.cat.master(h="id").strip() # needed to remove trailing newline
@@ -403,10 +455,12 @@ class Elasticstat:
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
             status = cluster_health['status']
+            for category in self.cluster_categories:
+                cluster_segments.append(CLUSTER_TEMPLATE[category].format(**cluster_health))
+                cluster_health_formatted = "   ".join(cluster_segments)
             print self.colorize(self.cluster_headings, ESColors.GRAY)
-            print self.colorize(CLUSTER_TEMPLATE.format(**cluster_health), self.STATUS_COLOR[status])
-            #print "" # space for readability
-            
+            print self.colorize(cluster_health_formatted, self.STATUS_COLOR[status])
+
             # Nodes can join and leave cluster with each iteration -- in order to report on nodes
             # that have left the cluster, maintain a list grouped by role.
             current_nodes_count = len(self.nodes_list)
@@ -415,7 +469,8 @@ class Elasticstat:
                 for node_id in nodes_stats['nodes']:
                     self.nodes_list.append(node_id)
                     self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
-                    node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+                    node_role = self.get_role(nodes_stats['nodes'][node_id].get('attributes'),
+                                              nodes_stats['nodes'][node_id].get('roles'))
                     self.nodes_by_role.setdefault(node_role, []).append(node_id)
             else:
                 # Check for new nodes that have joined the cluster
@@ -427,7 +482,7 @@ class Elasticstat:
                         self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
                         node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
                         self.nodes_by_role.setdefault(node_role, []).append(node_id)
-               
+
             # Print node stats
             print self.colorize(self.node_headings, ESColors.GRAY)
             for role in self.nodes_by_role:
@@ -438,7 +493,8 @@ class Elasticstat:
 
 def main():
     # get command line input
-    parser = ESArgParser(description='Elasticstat is a utility for real-time performance monitoring of an Elasticsearch cluster from the command line', add_help=False)
+    description = 'Elasticstat is a utility for real-time performance monitoring of an Elasticsearch cluster from the command line'
+    parser = ESArgParser(description=description, add_help=False)
 
     parser.add_argument('-h',
                         '--host',
@@ -486,6 +542,10 @@ def main():
                         action='store_true',
                         default=False,
                         help='Display without ANSI color output')
+    parser.add_argument('--no-pending-tasks',
+                        dest='no_pending_tasks',
+                        default=False,
+                        help='Disable display of pending tasks in cluster health (use for Elasticsearch <v1.5)')
     parser.add_argument('delay_interval',
                         default='1',
                         nargs='?',
@@ -496,7 +556,7 @@ def main():
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit())
-    elasticstat = Elasticstat(args.hostlist, args.port, args.username, args.password, args.use_ssl, args.delay_interval, args.categories, args.threadpools, args.no_color)
+    elasticstat = Elasticstat(args)
     elasticstat.format_headings()
     elasticstat.print_stats()
 

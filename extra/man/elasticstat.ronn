@@ -5,7 +5,7 @@ elasticstat(1) - Real-time performance monitoring of an Elasticsearch cluster
 
 `elasticstat` [`-h` _host-list_] [`--port` _http-port_] [`-u` _username_] [`-p` [_password_]]
               [`--ssl`] [`-c` _category_ [_category_ ...]]
-              [`-t` _threadpool_ [_threadpool_ ...]] [`-C`]
+              [`-t` _threadpool_ [_threadpool_ ...]] [`-C`] [`--no-pending-tasks`]
               [_delay-interval_]
 
 ## DESCRIPTION
@@ -43,6 +43,9 @@ These options control how to connect to Elasticsearch and the type of informatio
 
   * `-C`, `--no-color`:
     Display without ANSI color output
+
+  * `--no-pending-tasks`:
+    Omits number of pending tasks from cluster overview (needed for Elasticsearch < v1.5)
 
 ## CLUSTER METRICS
 
@@ -89,14 +92,14 @@ These metrics are displayed for each node in the cluster.
 
     _ALL_ A node serving as both a master and a data node (node.master = true, node.data = true).
 
-    _DATA_ A data-only node (node.master = false, node.data = true). 
+    _DATA_ A data-only node (node.master = false, node.data = true).
 
     _MST_ A master-only node (node.master = true, node.data = false).
 
     _RTR_ A client node (node.master = false, node.data = false).
 
     _UNK_ A node with an unknown or undetermined role.
-  
+
 ### OS METRICS
 
   * load:

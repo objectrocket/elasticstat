@@ -1,13 +1,13 @@
 .\" generated with Ronn/v0.7.3
 .\" http://github.com/rtomayko/ronn/tree/0.7.3
 .
-.TH "ELASTICSTAT" "1" "December 2015" "" ""
+.TH "ELASTICSTAT" "1" "June 2016" "" ""
 .
 .SH "NAME"
 \fBelasticstat\fR \- Real\-time performance monitoring of an Elasticsearch cluster
 .
 .SH "SYNOPSIS"
-\fBelasticstat\fR [\fB\-h\fR \fIhost\-list\fR] [\fB\-\-port\fR \fIhttp\-port\fR] [\fB\-u\fR \fIusername\fR] [\fB\-p\fR [\fIpassword\fR]] [\fB\-\-ssl\fR] [\fB\-c\fR \fIcategory\fR [\fIcategory\fR \.\.\.]] [\fB\-t\fR \fIthreadpool\fR [\fIthreadpool\fR \.\.\.]] [\fB\-C\fR] [\fIdelay\-interval\fR]
+\fBelasticstat\fR [\fB\-h\fR \fIhost\-list\fR] [\fB\-\-port\fR \fIhttp\-port\fR] [\fB\-u\fR \fIusername\fR] [\fB\-p\fR [\fIpassword\fR]] [\fB\-\-ssl\fR] [\fB\-c\fR \fIcategory\fR [\fIcategory\fR \.\.\.]] [\fB\-t\fR \fIthreadpool\fR [\fIthreadpool\fR \.\.\.]] [\fB\-C\fR] [\fB\-\-no\-pending\-tasks\fR] [\fIdelay\-interval\fR]
 .
 .SH "DESCRIPTION"
 \fBElasticstat\fR is a utility for real\-time performance monitoring of an Elasticsearch cluster from the command line, much like how the Unix utilities iostat or vmstat work\. The frequency of updates can be controlled via the \fBDELAYINTERVAL\fR optional parameter, which specifies a delay in seconds after each update\.
@@ -49,6 +49,10 @@ Threadpools to show\. One of: \fIindex\fR, \fIsearch\fR, \fIbulk\fR, \fIget\fR, 
 .TP
 \fB\-C\fR, \fB\-\-no\-color\fR
 Display without ANSI color output
+.
+.TP
+\fB\-\-no\-pending\-tasks\fR
+Omits number of pending tasks from cluster overview (needed for Elasticsearch < v1\.5)
 .
 .SH "CLUSTER METRICS"
 These metrics are displayed at the top of each output cycle\. They provide basic information about the health of the cluster\.

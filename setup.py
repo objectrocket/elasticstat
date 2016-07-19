@@ -9,7 +9,7 @@ setup(
     author=__author__,
     author_email='jtharp@objectrocket.com',
     url = 'https://github.com/objectrocket/elasticstat',
-    download_url = 'https://github.com/objectrocket/elasticstat/archive/1.2.0.tar.gz',
+    download_url = 'https://github.com/objectrocket/elasticstat/archive/1.3.0.tar.gz',
     install_requires=['elasticsearch'],
     packages=['elasticstat'],
     entry_points={
