@@ -356,6 +356,8 @@ class Elasticstat:
 
     def process_node_connections(self, role, node_id, node):
         processed_node_conns = {}
+        if node.get('http') == None:
+            node['http'] = {u'total_opened': 0, u'current_open': 0}
         processed_node_conns['http_conn'] = self.get_http_conns(node_id, node['http'])
         processed_node_conns['transport_conn'] = node['transport']['server_open']
         return(NODES_TEMPLATE['connections'].format(**processed_node_conns))
