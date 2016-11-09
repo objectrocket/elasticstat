@@ -195,14 +195,15 @@ class Elasticstat:
         return "{}|{}%".format(used_human, used_percent)
 
     def get_role(self, attributes=None, roles=None):
-        # This is dumb, but if data/master is true, ES doesn't include the key in
-        # the attributes subdoc.  Why?? :-P
-        ismaster = 'true'
-        isdata = 'true'
-        isingest = 'true'
+        # TODO: A bit of a hack I'm not proud of
+        ismaster = 'false'
+        isdata = 'false'
+        isingest = 'false'
 
-        if attributes is not None:
+        if attributes is not None and roles is None:
             # pre-2.3 roles
+            ismaster = 'true'
+            isdata = 'true'
             isingest = 'false'
             if 'data' in attributes:
                 isdata = attributes['data']
