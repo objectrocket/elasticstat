@@ -194,57 +194,37 @@ class Elasticstat:
 
         return "{}|{}%".format(used_human, used_percent)
 
-    def get_role(self, attributes=None, roles=None):
-        # TODO: A bit of a hack I'm not proud of
-        ismaster = 'false'
-        isdata = 'false'
-        isingest = 'false'
-
-        if attributes is not None and roles is None:
-            # pre-2.3 roles
-            ismaster = 'true'
-            isdata = 'true'
-            isingest = 'false'
-            if 'data' in attributes:
-                isdata = attributes['data']
-            if 'master' in attributes:
-                ismaster = attributes['master']
-
-        if roles is not None:
-            if 'master' in roles:
-                ismaster = 'true'
-            if 'data' in roles:
-                ismaster = 'true'
-            if 'ingest' in roles:
-                isingest = 'true'
-
-        if ismaster == 'true' and isdata == 'true':
-            # if is both master/data node, client is assumed as well
-            if roles is not None and isingest == 'false':
-                return "M/D"
-            else:
-                return "ALL"
-        elif ismaster == 'true' and isdata == 'false':
-            # master node
-            if roles is not None and isingest == 'true':
-                return "M/I"
-            else:
-                return "MST"
-        elif ismaster == 'false' and isdata == 'true':
-            # data-only node
-            if roles is not None and isingest == 'true':
-                return "D/I"
-            else:
+    def get_role(self,node_id, node_stats):
+        try:
+            # Section to handle ES 5
+            role = node_stats['nodes'][node_id]['roles']
+            if 'data' in role:
                 return "DATA"
-        elif ismaster == 'false' and isdata == 'false':
-            if roles is not None and isingest == 'true':
+            if 'master' in role:
+                return "MST"
+            if 'ingest' in role:      
                 return "ING"
             else:
-                # client node (using RTR like monogostat)
+                return "UNK"
+        except KeyError:
+            # Section to handle ES < 2.x
+            ismaster = 'true'
+            isdata = 'true'
+            role = node_stats['nodes'][node_id]['attributes']
+            if 'data' in role:
+                isdata = role['data']
+            if 'master' in role:
+                ismaster = role['master']
+            if ismaster == 'true' and isdata == 'true':
+                return "ALL"
+            elif ismaster == 'true' and isdata == 'false':
+                return "MST"
+            elif ismaster == 'false' and isdata == 'true':
+                return "DATA"
+            elif ismaster == 'false' and isdata == 'false':
                 return "RTR"
-        else:
-            # uh, wat? no idea if we reach here
-            return "UNK"
+            else:
+                return "UNK"
 
     def get_gc_stats(self, node_id, node_gc_stats):
         # check if this is a new node
@@ -411,8 +391,7 @@ class Elasticstat:
                     print self.colorize(NODES_FAILED_TEMPLATE.format(**failed_node), ESColors.GRAY)
                 continue
             # make sure node's role hasn't changed
-            current_role = self.get_role(nodes_stats['nodes'][node_id].get('attributes'),
-                                         nodes_stats['nodes'][node_id].get('roles'))
+            current_role = self.get_role(node_id, nodes_stats)
             if current_role != role:
                 # Role changed, update lists so output will be correct on next iteration
                 self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
@@ -472,8 +451,7 @@ class Elasticstat:
                 for node_id in nodes_stats['nodes']:
                     self.nodes_list.append(node_id)
                     self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
-                    node_role = self.get_role(nodes_stats['nodes'][node_id].get('attributes'),
-                                              nodes_stats['nodes'][node_id].get('roles'))
+                    node_role = self.get_role(node_id, nodes_stats)
                     self.nodes_by_role.setdefault(node_role, []).append(node_id)
             else:
                 # Check for new nodes that have joined the cluster
@@ -483,7 +461,7 @@ class Elasticstat:
                     for node_id in self.new_nodes:
                         self.nodes_list.append(node_id)
                         self.node_names[node_id] = nodes_stats['nodes'][node_id]['name']
-                        node_role = self.get_role(nodes_stats['nodes'][node_id]['attributes'])
+                        node_role = self.get_role(node_id, nodes_stats)
                         self.nodes_by_role.setdefault(node_role, []).append(node_id)
 
             # Print node stats
