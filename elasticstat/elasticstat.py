@@ -225,6 +225,17 @@ class Elasticstat:
                 return "RTR"
             else:
                 return "UNK"
+        else: 
+            # Section to handle ES 6.x 
+            role = node_stats['nodes'][node_id]['nodeRole']
+            if 'data' in role:
+                return "DATA"
+            if 'master' in role:
+                return "MST"
+            if 'ingest' in role:      
+                return "ING"
+            else:
+                return "UNK"
 
     def get_gc_stats(self, node_id, node_gc_stats):
         # check if this is a new node
