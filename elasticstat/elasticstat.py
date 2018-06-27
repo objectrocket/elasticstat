@@ -359,7 +359,7 @@ class Elasticstat:
         # Data node specific metrics
         if role in ['DATA', 'ALL']:
             processed_node_dn['merge_time'] = node['indices']['merges']['total_time']
-            processed_node_dn['store_throttle'] = node['indices']['store']['throttle_time']
+            processed_node_dn['store_throttle'] = node['indices']['store']['size_in_bytes']
             doc_count = node['indices']['docs']['count']
             deleted_count = node['indices']['docs']['deleted']
             if deleted_count > 0:
