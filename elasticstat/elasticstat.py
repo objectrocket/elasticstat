@@ -202,7 +202,7 @@ class Elasticstat:
                 return "DATA"
             if 'master' in role:
                 return "MST"
-            if 'ingest' in role:      
+            if 'ingest' in role:
                 return "ING"
             else:
                 return "UNK"
@@ -225,14 +225,14 @@ class Elasticstat:
                 return "RTR"
             else:
                 return "UNK"
-        else: 
-            # Section to handle ES 6.x 
+        else:
+            # Section to handle ES 6.x
             role = node_stats['nodes'][node_id]['nodeRole']
             if 'data' in role:
                 return "DATA"
             if 'master' in role:
                 return "MST"
-            if 'ingest' in role:      
+            if 'ingest' in role:
                 return "ING"
             else:
                 return "UNK"
@@ -443,7 +443,7 @@ class Elasticstat:
             cluster_segments = []
             cluster_health = self.es_client.cluster.health()
             nodes_stats = self.es_client.nodes.stats(human=True)
-            self.active_master = self.es_client.cat.master(h="id").strip() # needed to remove trailing newline
+            self.active_master = self.es_client.cat.master(h="id")[0]['id']
 
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
