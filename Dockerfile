@@ -1,4 +1,4 @@
-FROM python:2
+FROM python:2-slim
 
 COPY . /usr/src/elasticstat/
 WORKDIR /usr/src/elasticstat/
