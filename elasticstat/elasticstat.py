@@ -164,13 +164,13 @@ class Elasticstat:
         return ['general'] + categories
 
     def _parse_threadpools(self, threadpools):
-        #adding version discovery for ES7 to get correct threadpool
+        # adding version discovery for ES7 to get correct threadpool
         if version.parse(json.dumps(self.es_client.info()['version']['number']).strip('"')) > version.parse("7.0.0"):
             threadpools = filter(None, [re.sub(r".*index*", r"", i) for i in threadpools])
             threadpools = filter(None, [re.sub(r".*bulk*", r"", i) for i in threadpools])
         else:
             threadpools = filter(None, [re.sub(r".*write*", r"", i) for i in threadpools])
-        #end vesion discovery
+        # end vesion discovery
         if isinstance(threadpools, list) and ',' in threadpools[0]:
             threadpools = threadpools[0].split(',')
         return threadpools
