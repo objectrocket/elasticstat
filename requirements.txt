@@ -1,6 +1,5 @@
 certifi==2019.11.28
 elasticsearch==7.1.0
-elasticstat==1.3.3
 packaging==20.0
 pyparsing==2.4.6
 six==1.13.0
