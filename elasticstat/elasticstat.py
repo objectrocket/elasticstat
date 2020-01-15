@@ -114,7 +114,7 @@ class Elasticstat:
         # Create Elasticsearch client
         self.es_client = Elasticsearch(self._parse_connection_properties(args.hostlist, args.port, args.username,
                                                                          args.password, args.use_ssl))
-        #moving threadpool after client creation to use version discovery
+        # moving threadpool after client creation to use version discovery
         self.threadpools = self._parse_threadpools(args.threadpools)
 
     def _parse_connection_properties(self, host, port, username, password, use_ssl):
@@ -170,7 +170,7 @@ class Elasticstat:
             threadpools = filter(None, [re.sub(r".*bulk*", r"", i) for i in threadpools])
         else:
             threadpools = filter(None, [re.sub(r".*write*", r"", i) for i in threadpools])
-        #end vesion dicscovery
+        #end vesion discovery
         if isinstance(threadpools, list) and ',' in threadpools[0]:
             threadpools = threadpools[0].split(',')
         return threadpools
