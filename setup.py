@@ -10,7 +10,7 @@ setup(
     author_email='jtharp@objectrocket.com',
     url = 'https://github.com/objectrocket/elasticstat',
     download_url = 'https://github.com/objectrocket/elasticstat/archive/1.3.0.tar.gz',
-    install_requires=['elasticsearch'],
+    install_requires=['elasticsearch', 'packaging', 'certifi'],
     packages=['elasticstat'],
     entry_points={
         'console_scripts': [

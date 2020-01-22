@@ -1,0 +1,12 @@
+# Changelog
+All notable changes to this project will be documented in this file.
+
+## [1.3.4] - 2020-1-15 Paul Rossmeier
+### Added
+* requirements.txt
+* elasticstat/elasticstat.py - added version discovery to (_parse_threadpools) - updates threadpool to match version above or below 7
+* elasticstat/elasticstat.py - added packages "json", "re", "packaging" to the import commands
+* elasticstat/elasticstat.py - added "write" to the defailt threadpool
+###Changed
+* elasticstat/elasticstat.py -  moving self.threadpool constructor after client creation constructor to use version discovery
+* setup.py -  added packaging and certifi to 'install_requires'

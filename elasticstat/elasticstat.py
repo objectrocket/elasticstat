@@ -21,7 +21,10 @@ import getpass
 import signal
 import sys
 import time
+import json
+import re
 
+from packaging import version
 from elasticsearch import Elasticsearch
 from urllib3.util import parse_url
 
@@ -67,7 +70,7 @@ NODE_HEADINGS["merge_time"] = "merges"
 NODE_HEADINGS["store_throttle"] = "idx st"
 NODE_HEADINGS["docs"] = "docs"
 NODE_HEADINGS["fs"] = "disk usage"
-DEFAULT_THREAD_POOLS = ["index", "search", "bulk", "get"]
+DEFAULT_THREAD_POOLS = ["index", "search", "bulk", "get", "write"]
 CATEGORIES = ['general', 'os', 'jvm', 'threads', 'fielddata', 'connections', 'data_nodes']
 
 class ESArgParser(argparse.ArgumentParser):
@@ -102,7 +105,6 @@ class Elasticstat:
         self.new_nodes = [] # used to track new nodes that join the cluster
         self.active_master = ""
         self.no_color = args.no_color
-        self.threadpools = self._parse_threadpools(args.threadpools)
         self.categories = self._parse_categories(args.categories)
         self.cluster_categories = CLUSTER_CATEGORIES
         if args.no_pending_tasks:
@@ -112,6 +114,8 @@ class Elasticstat:
         # Create Elasticsearch client
         self.es_client = Elasticsearch(self._parse_connection_properties(args.hostlist, args.port, args.username,
                                                                          args.password, args.use_ssl))
+        # moving threadpool after client creation to use version discovery
+        self.threadpools = self._parse_threadpools(args.threadpools)
 
     def _parse_connection_properties(self, host, port, username, password, use_ssl):
         hosts_list = []
@@ -160,6 +164,13 @@ class Elasticstat:
         return ['general'] + categories
 
     def _parse_threadpools(self, threadpools):
+        # adding version discovery for ES7 to get correct threadpool
+        if version.parse(json.dumps(self.es_client.info()['version']['number']).strip('"')) > version.parse("7.0.0"):
+            threadpools = filter(None, [re.sub(r".*index*", r"", i) for i in threadpools])
+            threadpools = filter(None, [re.sub(r".*bulk*", r"", i) for i in threadpools])
+        else:
+            threadpools = filter(None, [re.sub(r".*write*", r"", i) for i in threadpools])
+        # end vesion discovery
         if isinstance(threadpools, list) and ',' in threadpools[0]:
             threadpools = threadpools[0].split(',')
         return threadpools
