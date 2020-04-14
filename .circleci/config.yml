@@ -1,0 +1,20 @@
+version: 2.1
+jobs:
+  lint_test:
+    docker:
+      - image: circleci/python:2.7.13
+    steps:
+      - checkout
+
+      - run:
+          name: install test dependencies
+          command: sudo pip install --upgrade pip tox
+      - run:
+          name: lint and test
+          command: tox -r
+
+workflows:
+  version: 2
+  basic-workflow:
+    jobs:
+      - lint_test
