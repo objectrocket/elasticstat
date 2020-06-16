@@ -73,11 +73,13 @@ NODE_HEADINGS["fs"] = "disk usage"
 DEFAULT_THREAD_POOLS = ["index", "search", "bulk", "get", "write"]
 CATEGORIES = ['general', 'os', 'jvm', 'threads', 'fielddata', 'connections', 'data_nodes']
 
+
 class ESArgParser(argparse.ArgumentParser):
     """ArgumentParser which prints help by default on any arg parsing error"""
     def error(self, message):
         self.print_help()
         sys.exit(2)
+
 
 class ESColors:
     """ANSI escape codes for color output"""
@@ -87,6 +89,7 @@ class ESColors:
     YELLOW = '\033[0;33m'
     GRAY = '\033[1;30m'
     WHITE = '\033[1;37m'
+
 
 class Elasticstat:
     """Elasticstat"""
@@ -99,10 +102,10 @@ class Elasticstat:
         self.node_counters['gc'] = {}
         self.node_counters['fd'] = {}
         self.node_counters['hconn'] = {}
-        self.nodes_list = [] # used for detecting new nodes
-        self.nodes_by_role = {} # main list of nodes, organized by role
-        self.node_names = {} # node names, organized by id
-        self.new_nodes = [] # used to track new nodes that join the cluster
+        self.nodes_list = []  # used for detecting new nodes
+        self.nodes_by_role = {}  # main list of nodes, organized by role
+        self.node_names = {}  # node names, organized by id
+        self.new_nodes = []  # used to track new nodes that join the cluster
         self.active_master = ""
         self.no_color = args.no_color
         self.categories = self._parse_categories(args.categories)
@@ -185,7 +188,7 @@ class Elasticstat:
         return datetime.datetime.now().strftime("%H:%M:%S")
 
     def size_human(self, size):
-        for unit in ['B','KB','MB','GB','TB','PB','EB','ZB']:
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB']:
             if abs(size) < 1024.0:
                 return "{:6.2f} {}".format(size, unit)
             size /= 1024.0
@@ -205,7 +208,7 @@ class Elasticstat:
 
         return "{}|{}%".format(used_human, used_percent)
 
-    def get_role(self,node_id, node_stats):
+    def get_role(self, node_id, node_stats):
         try:
             # Section to handle ES 5
             role = node_stats['nodes'][node_id]['roles']
@@ -213,7 +216,7 @@ class Elasticstat:
                 return "DATA"
             if 'master' in role:
                 return "MST"
-            if 'ingest' in role:      
+            if 'ingest' in role:
                 return "ING"
             else:
                 return "UNK"
@@ -236,14 +239,14 @@ class Elasticstat:
                 return "RTR"
             else:
                 return "UNK"
-        else: 
-            # Section to handle ES 6.x 
+        else:
+            # Section to handle ES 6.x
             role = node_stats['nodes'][node_id]['nodeRole']
             if 'data' in role:
                 return "DATA"
             if 'master' in role:
                 return "MST"
-            if 'ingest' in role:      
+            if 'ingest' in role:
                 return "ING"
             else:
                 return "UNK"
@@ -318,7 +321,7 @@ class Elasticstat:
             # Pre Elasticsearch 5.x
             node_load_avg = node['os'].get('load_average')
             if isinstance(node_load_avg, list):
-                node_load_avg="/".join(str(x) for x in node_load_avg)
+                node_load_avg = "/".join(str(x) for x in node_load_avg)
             elif isinstance(node_load_avg, float):
                 # Elasticsearch 2.0-2.3 only return 1 load average, not the standard 5/10/15 min avgs
                 node_load_avg = "{0:.2f}".format(node_load_avg)
@@ -334,7 +337,7 @@ class Elasticstat:
     def process_node_jvm(self, role, node_id, node):
         processed_node_jvm = {}
         processed_node_jvm['used_heap'] = "{0}%".format(node['jvm']['mem']['heap_used_percent'])
-        processed_node_jvm ['old_gc_sz'] = node['jvm']['mem']['pools']['old']['used']
+        processed_node_jvm['old_gc_sz'] = node['jvm']['mem']['pools']['old']['used']
         node_gc_stats = node['jvm']['gc']['collectors']
         processed_node_jvm['old_gc'], processed_node_jvm['young_gc'] = self.get_gc_stats(node_id, node_gc_stats)
         return(NODES_TEMPLATE['jvm'].format(**processed_node_jvm))
@@ -343,9 +346,9 @@ class Elasticstat:
         thread_segments = []
         for pool in self.threadpools:
             if pool in node['thread_pool']:
-                threads ="{0}|{1}|{2}".format(node['thread_pool'][pool]['active'],
-                                              node['thread_pool'][pool]['queue'],
-                                              node['thread_pool'][pool]['rejected'])
+                threads = "{0}|{1}|{2}".format(node['thread_pool'][pool]['active'],
+                                               node['thread_pool'][pool]['queue'],
+                                               node['thread_pool'][pool]['rejected'])
                 thread_segments.append(NODES_TEMPLATE['threads'].format(threads=threads))
             else:
                 thread_segments.append(NODES_TEMPLATE['threads'].format(threads='-|-|-'))
@@ -359,7 +362,7 @@ class Elasticstat:
 
     def process_node_connections(self, role, node_id, node):
         processed_node_conns = {}
-        if node.get('http') == None:
+        if node.get('http') is None:
             node['http'] = {u'total_opened': 0, u'current_open': 0}
         processed_node_conns['http_conn'] = self.get_http_conns(node_id, node['http'])
         processed_node_conns['transport_conn'] = node['transport']['server_open']
@@ -409,15 +412,15 @@ class Elasticstat:
                 else:
                     failed_node = {}
                     failed_node['name'] = failed_node_name + '-'
-                    failed_node['role'] = "({0})".format(role) # Role it had when we last saw this node in the cluster
+                    failed_node['role'] = "({0})".format(role)  # Role it had when we last saw this node in the cluster
                     print self.colorize(NODES_FAILED_TEMPLATE.format(**failed_node), ESColors.GRAY)
                 continue
             # make sure node's role hasn't changed
             current_role = self.get_role(node_id, nodes_stats)
             if current_role != role:
                 # Role changed, update lists so output will be correct on next iteration
-                self.nodes_by_role.setdefault(current_role, []).append(node_id) # add to new role
-                self.nodes_by_role[role].remove(node_id) # remove from current role
+                self.nodes_by_role.setdefault(current_role, []).append(node_id)  # add to new role
+                self.nodes_by_role[role].remove(node_id)  # remove from current role
             row = self.process_node(current_role, node_id, nodes_stats['nodes'][node_id])
             if node_id in self.new_nodes:
                 print self.colorize(row, ESColors.WHITE)
@@ -454,7 +457,7 @@ class Elasticstat:
             cluster_segments = []
             cluster_health = self.es_client.cluster.health()
             nodes_stats = self.es_client.nodes.stats(human=True)
-            self.active_master = self.es_client.cat.master(h="id").strip() # needed to remove trailing newline
+            self.active_master = self.es_client.cat.master(h="id").strip()  # needed to remove trailing newline
 
             # Print cluster health
             cluster_health['timestamp'] = self.thetime()
@@ -490,7 +493,7 @@ class Elasticstat:
             print self.colorize(self.node_headings, ESColors.GRAY)
             for role in self.nodes_by_role:
                 self.process_role(role, nodes_stats)
-            print "" # space out each run for readability
+            print ""  # space out each run for readability
             time.sleep(self.sleep_interval)
 
 

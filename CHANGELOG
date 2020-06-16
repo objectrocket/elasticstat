@@ -7,6 +7,18 @@ All notable changes to this project will be documented in this file.
 * elasticstat/elasticstat.py - added version discovery to (_parse_threadpools) - updates threadpool to match version above or below 7
 * elasticstat/elasticstat.py - added packages "json", "re", "packaging" to the import commands
 * elasticstat/elasticstat.py - added "write" to the defailt threadpool
-###Changed
+### Changed
 * elasticstat/elasticstat.py -  moving self.threadpool constructor after client creation constructor to use version discovery
 * setup.py -  added packaging and certifi to 'install_requires'
+
+## [1.3.5] - 2020-4-14 Paul Rossmeier
+### Added
+* requirements/prod.txt - added for requirements when insatlling the package
+* requirements/dev.txt - added for tox to run
+* tox.ini - added for tox configuration
+* circleci/config.yml - added circleci intergration
+### Changed
+* setup.py - added discovery for prod/dev variable to allow for diffrent python requirement docs
+* elasticstat/elasticstat.py - per flake8 linting I updated all requested linting errors
+### Removed
+* requirements.txt - removed on favor of requirements dir 
