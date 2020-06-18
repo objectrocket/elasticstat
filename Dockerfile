@@ -1,8 +1,11 @@
 FROM python:2-slim
 
-COPY . /usr/src/elasticstat/
 WORKDIR /usr/src/elasticstat/
 
+COPY ./requirements/prod.txt /usr/src/elasticstat/requirements/
+RUN pip install --no-cache -r ./requirements/prod.txt
+
+COPY . /usr/src/elasticstat/
 RUN pip install --no-cache .
 
 ENTRYPOINT [ "python", "./elasticstat/elasticstat.py" ]
