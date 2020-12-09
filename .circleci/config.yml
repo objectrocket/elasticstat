@@ -1,20 +1,28 @@
 version: 2.1
+references:
+  objectrocket-docker-auth: &objectrocket-docker-auth
+    auth:
+      username: ${DOCKER_USERNAME}
+      password: ${DOCKER_PASSWORD}
+  context-to-use: &context-to-use
+    context: objectrocket-shared
 jobs:
   lint_test:
     docker:
-      - image: circleci/python:2.7.13
+    - <<: *objectrocket-docker-auth
+      image: circleci/python:2.7.13
     steps:
-      - checkout
+    - checkout
 
-      - run:
-          name: install test dependencies
-          command: sudo pip install --upgrade pip tox
-      - run:
-          name: lint and test
-          command: tox -r
+    - run:
+        name: install test dependencies
+        command: sudo pip install --upgrade pip tox
+    - run:
+        name: lint and test
+        command: tox -r
 
 workflows:
   version: 2
   basic-workflow:
     jobs:
-      - lint_test
+    - lint_test: *context-to-use
