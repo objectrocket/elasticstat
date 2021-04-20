@@ -19,7 +19,7 @@ more-itertools==5.0.0
 packaging==20.3
 pathlib2==2.3.5
 pluggy==0.13.1
-py==1.8.1
+py==1.10.0
 pycodestyle==2.5.0
 pyflakes==2.1.1
 pyparsing==2.4.7
