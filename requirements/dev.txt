@@ -30,7 +30,7 @@ six==1.14.0
 toml==0.10.0
 tox==3.14.6
 typing==3.7.4.1
-urllib3==1.25.8
+urllib3==2.8.0
 virtualenv==20.0.17
 wcwidth==0.1.9
 zipp==1.2.0
