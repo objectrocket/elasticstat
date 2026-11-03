@@ -8,7 +8,7 @@ distlib==0.3.0
 elasticsearch==7.6.0
 entrypoints==0.3
 enum34==1.1.10
-filelock==3.0.12
+filelock==4.2.1
 flake8==3.7.9
 funcsigs==1.0.2
 functools32==3.2.3.post2
